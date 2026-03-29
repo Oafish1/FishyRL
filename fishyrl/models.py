@@ -6,12 +6,12 @@ from typing import Any
 import torch
 import torch.nn as nn
 
-from . import distributions
+from . import actions, distributions
 
 
 class MLP(nn.Module):
     """MLP for processing vector inputs."""
-    def __init__(self, input_dim: int, output_dim: int | None = None, hidden_dims: list[int] | None = None) -> None:
+    def __init__(self, input_dim: int, output_dim: int | None = None, hidden_dims: list[int] = []) -> None:
         """Initialize the MLP.
 
         :param input_dim: The dimension of the input vector.
@@ -20,7 +20,7 @@ class MLP(nn.Module):
             a final hidden layer will be added with no normalization or activation
         :type output_dim: int | None
         :param hidden_dims: The dimensions of the hidden layers.
-        :type hidden_dims: list[int] | None
+        :type hidden_dims: list[int]
 
         """
         super().__init__()
@@ -46,9 +46,9 @@ class MLP(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Perform a forward pass through the MLP.
 
-        :param x: The input tensor of shape (batch_size, input_dim).
+        :param x: The input tensor of shape (batch_dim, input_dim).
         :type x: torch.Tensor
-        :return: The output tensor of shape (batch_size, hidden_dims[-1]).
+        :return: The output tensor of shape (batch_dim, hidden_dims[-1]).
         :rtype: torch.Tensor
 
         """
@@ -79,9 +79,9 @@ class MLPEncoder(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Perform a forward pass through the MLP encoder.
 
-        :param x: The input tensor of shape (batch_size, input_dim).
+        :param x: The input tensor of shape (batch_dim, input_dim).
         :type x: torch.Tensor
-        :return: The output tensor of shape (batch_size, hidden_dim).
+        :return: The output tensor of shape (batch_dim, hidden_dim).
         :rtype: torch.Tensor
 
         """
@@ -110,12 +110,12 @@ class MLPDecoder(nn.Module):
             hidden_dims=3 * [hidden_dim],
         )
 
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor] | torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Perform a forward pass through the MLP decoder.
 
-        :param x: The input tensor of shape (batch_size, hidden_dim).
+        :param x: The input tensor of shape (batch_dim, hidden_dim).
         :type x: torch.Tensor
-        :return: The output tensor of shape (batch_size, output_dim).
+        :return: The output tensor of shape (batch_dim, output_dim).
         :rtype: torch.Tensor
 
         """
@@ -140,7 +140,7 @@ class ChannelNorm(nn.LayerNorm):
 
         Swaps the channel dimension to the end, applies layer normalization, then swaps it back.
 
-        :param x: The input tensor of shape (batch_size, channels, height, width).
+        :param x: The input tensor of shape (batch_dim, channels, height, width).
         :type x: torch.Tensor
         :return: The normalized tensor of the same shape.
         :rtype: torch.Tensor
@@ -161,13 +161,13 @@ class CNNEncoder(nn.Module):
     layer normalization and SiLU activations.
 
     """
-    def __init__(self, input_channels: int, image_size: tuple[int, int] = (64, 64)) -> None:
+    def __init__(self, input_channels: int, image_dim: tuple[int, int] = (64, 64)) -> None:
         """Initialize the CNN encoder.
 
         :param input_channels: The number of input channels in the image.
         :type input_channels: int
-        :param image_size: The size of the input image. (Default: ``(64, 64)``)
-        :type image_size: tuple[int, int]
+        :param image_dim: The size of the input image. (Default: ``(64, 64)``)
+        :type image_dim: tuple[int, int]
 
         """
         super().__init__()
@@ -184,7 +184,7 @@ class CNNEncoder(nn.Module):
                 nn.SiLU(),
             ]
         layers += [nn.Flatten()]
-        self._output_dim = hidden_channels[-1] * math.prod(image_size) // 4 ** num_blocks
+        self._output_dim = hidden_channels[-1] * math.prod(image_dim) // 4 ** num_blocks
         self._model = nn.Sequential(*layers)
 
     @property
@@ -199,9 +199,9 @@ class CNNEncoder(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Perform a forward pass through the CNN encoder.
 
-        :param x: The input tensor of shape (batch_size, channels, height, width).
+        :param x: The input tensor of shape (batch_dim, channels, height, width).
         :type x: torch.Tensor
-        :return: The output tensor of shape (batch_size, output_dim, height, width).
+        :return: The output tensor of shape (batch_dim, output_dim, height, width).
         :rtype: torch.Tensor
 
         """
@@ -216,20 +216,20 @@ class CNNDecoder(nn.Module):
     and SiLU activations.
 
     """
-    def __init__(self, output_channels: int, latent_size: int) -> None:
+    def __init__(self, output_channels: int, latent_dim: int) -> None:
         """Initialize the CNN decoder.
 
         :param output_channels: The number of output channels in the reconstructed image.
         :type output_channels: int
-        :param latent_size: The size of the latent representation.
-        :type latent_size: int
+        :param latent_dim: The size of the latent representation.
+        :type latent_dim: int
 
         """
         super().__init__()
 
         # Create model in blocks
         layers = [
-            nn.Linear(latent_size, 16 * 4 * 4),
+            nn.Linear(latent_dim, 16 * 4 * 4),
             nn.Unflatten(-1, (-1, 4, 4)),
         ]
         num_blocks = 4
@@ -253,9 +253,9 @@ class CNNDecoder(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Perform a forward pass through the CNN decoder.
 
-        :param x: The input tensor of shape (batch_size, latent_dim).
+        :param x: The input tensor of shape (batch_dim, latent_dim).
         :type x: torch.Tensor
-        :return: The output tensor of shape (batch_size, channels, height, width).
+        :return: The output tensor of shape (batch_dim, channels, height, width).
         :rtype: torch.Tensor
 
         """
@@ -264,24 +264,24 @@ class CNNDecoder(nn.Module):
 
 class LayerNormGRU(nn.Module):
     """GRU layer with internal layer normalization."""
-    def __init__(self, input_size: int, hidden_size: int) -> None:
+    def __init__(self, input_dim: int, hidden_dim: int) -> None:
         """Initialize the LayerNormGRU.
 
-        :param input_size: The size of the input tensor.
-        :type input_size: int
-        :param hidden_size: The size of the hidden state.
-        :type hidden_size: int
+        :param input_dim: The size of the input tensor.
+        :type input_dim: int
+        :param hidden_dim: The size of the hidden state.
+        :type hidden_dim: int
 
         """
         super().__init__()
 
         # Record parameters
-        self._hidden_size = hidden_size
+        self._hidden_dim = hidden_dim
 
         # Initialize layers
         self._mlp = nn.Sequential(
-            nn.Linear(input_size + hidden_size, 3 * hidden_size, bias=True),
-            nn.LayerNorm(3 * hidden_size, eps=1e-3),
+            nn.Linear(input_dim + hidden_dim, 3 * hidden_dim, bias=True),
+            nn.LayerNorm(3 * hidden_dim, eps=1e-3),
         )
 
     def forward(self, x: torch.Tensor, h: torch.Tensor | None = None) -> torch.Tensor:
@@ -289,17 +289,17 @@ class LayerNormGRU(nn.Module):
 
         Applies layer normalization to the hidden state after the GRU computation.
 
-        :param x: The input tensor of shape (batch_size, input_dim).
+        :param x: The input tensor of shape (batch_dim, input_dim).
         :type x: torch.Tensor
-        :param h: The initial hidden state of shape (batch_size, hidden_dim), or None to use zeros. (Default: ``None``)
+        :param h: The initial hidden state of shape (batch_dim, hidden_dim), or None to use zeros. (Default: ``None``)
         :type h: torch.Tensor | None
-        :return: The final hidden state of shape (batch_size, hidden_dim).
+        :return: The final hidden state of shape (batch_dim, hidden_dim).
         :rtype: torch.Tensor
 
         """
         # If h is None, initialize to zeros
         if h is None:
-            h = torch.zeros(*x.shape[:-1], self._hidden_size, device=x.device, dtype=x.dtype)
+            h = torch.zeros(*x.shape[:-1], self._hidden_dim, device=x.device, dtype=x.dtype)
 
         # Process input and hidden state through MLP
         x = torch.cat((x, h), dim=-1)
@@ -323,45 +323,45 @@ class RecurrentModel(nn.Module):
     activations on the output.
 
     """
-    def __init__(self, input_size: int, hidden_size: int) -> None:
+    def __init__(self, input_dim: int, hidden_dim: int) -> None:
         """Initialize the recurrent model.
 
-        :param input_size: The size of the input tensor.
-        :type input_size: int
-        :param hidden_size: The size of the hidden state in the GRU.
-        :type hidden_size: int
+        :param input_dim: The size of the input tensor.
+        :type input_dim: int
+        :param hidden_dim: The size of the hidden state in the GRU.
+        :type hidden_dim: int
 
         """
         super().__init__()
 
         # Store variables
-        self._hidden_size = hidden_size
+        self._hidden_dim = hidden_dim
 
         # Create MLP and GRU layers
         self._mlp = nn.Sequential(
-            nn.Linear(input_size, hidden_size),
-            nn.LayerNorm(hidden_size, eps=1e-3),
+            nn.Linear(input_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim, eps=1e-3),
             nn.SiLU(),
         )
-        self._gru = LayerNormGRU(hidden_size, hidden_size)
+        self._gru = LayerNormGRU(hidden_dim, hidden_dim)
 
     @property
-    def hidden_size(self) -> int:
+    def hidden_dim(self) -> int:
         """Hidden size of the recurrent model.
 
         :type: int
 
         """
-        return self._hidden_size
+        return self._hidden_dim
 
     def forward(self, x: torch.Tensor, h: torch.Tensor | None = None) -> torch.Tensor:
         """Perform a forward pass through the recurrent model.
 
-        :param x: The input tensor of shape (batch_size, seq_len, latent_dim).
+        :param x: The input tensor of shape (batch_dim, seq_len, latent_dim).
         :type x: torch.Tensor
-        :param h: The initial hidden state of shape (1, batch_size, hidden_dim), or None to use zeros. (Default: ``None``)
+        :param h: The initial hidden state of shape (1, batch_dim, hidden_dim), or None to use zeros. (Default: ``None``)
         :type h: torch.Tensor | None
-        :return: The final hidden state of shape (batch_size, hidden_dim).
+        :return: The final hidden state of shape (batch_dim, hidden_dim).
         :rtype: torch.Tensor
 
         """
@@ -409,7 +409,7 @@ class RSSM(nn.Module):
         # Initialize recurrent model hidden state
         # NOTE: Making this initial state learnable allows the model to learn an initial state
         #       rather than always starting from zeros
-        self._initial_hidden_state = nn.Parameter(torch.zeros(recurrent_model.hidden_size))
+        self._initial_hidden_state = nn.Parameter(torch.zeros(recurrent_model.hidden_dim))
 
     @property
     def initial_hidden_state(self) -> torch.Tensor:
@@ -426,9 +426,9 @@ class RSSM(nn.Module):
         Infer the stochastic state from the hidden state (using the transition model) or from the hidden state and the
         embedded observation (using the representation model).
 
-        :param hidden_state: The hidden state from the recurrent model, of shape (batch_size, hidden_dim).
+        :param hidden_state: The hidden state from the recurrent model, of shape (batch_dim, hidden_dim).
         :type hidden_state: torch.Tensor
-        :param embedded_obs: The embedded observation, of shape (batch_size, obs_dim). (Default: ``None``)
+        :param embedded_obs: The embedded observation, of shape (batch_dim, obs_dim). (Default: ``None``)
         :type embedded_obs: torch.Tensor | None
         :return: The logits and sampled stochastic state.
         :rtype: tuple[torch.Tensor, torch.Tensor]
@@ -472,21 +472,30 @@ class RSSM(nn.Module):
 
     def forward(
         self,
-        action: torch.Tensor,
-        posterior: torch.Tensor,
+        action: torch.Tensor | None = None,
+        posterior: torch.Tensor | None = None,
         hidden_state: torch.Tensor | None = None,
         embedded_obs: torch.Tensor | None = None,
+        initialize: torch.Tensor | None = None,
+        batch_dim: int | None = None,
     ) -> dict[str, torch.Tensor]:
         """Perform one step of the RSSM.
 
-        :param action: The action taken, of shape (batch_size, action_dim).
-        :type action: torch.Tensor
-        :param posterior: The posterior stochastic state from the previous step, of shape (batch_size, latent_dim).
-        :type posterior: torch.Tensor
-        :param hidden_state: The initial hidden state of the recurrent model, of shape (batch_size, hidden_dim), or None to use the initial hidden state.
+        Will compute the hidden state using action, posterior, and previous hidden state. If not available,
+        will instead use the initial hidden state.
+
+        :param action: The action taken, of shape (batch_dim, action_dim).
+        :type action: torch.Tensor | None
+        :param posterior: The posterior stochastic state from the previous step, of shape (batch_dim, latent_dim).
+        :type posterior: torch.Tensor | None
+        :param hidden_state: The initial hidden state of the recurrent model, of shape (batch_dim, hidden_dim).
         :type hidden_state: torch.Tensor | None
-        :param embedded_obs: The embedded observation, of shape (batch_size, obs_dim), or None if imagining.
+        :param embedded_obs: The embedded observation, of shape (batch_dim, obs_dim), or None if imagining.
         :type embedded_obs: torch.Tensor | None
+        :param initialize: Boolean tensor of hidden states to initialize of shape (batch_dim). (Default: ``None``)
+        :type initialize: torch.Tensor | None
+        :param batch_dim: The batch dimension, inferred if not provided. (Default: ``None``)
+        :type batch_dim: int | None
         :return: A dictionary containing the prior and posterior logits and samples, and the updated hidden state.
         :rtype: dict[str, torch.Tensor]
 
@@ -494,19 +503,46 @@ class RSSM(nn.Module):
         # Get initial hidden state if not provided
         # NOTE: SheepRL performs one step of the recurrent model to get to the initial hidden state.
         #       We do not perform this, as it appears to be unnecessary
-        if hidden_state is None:
-            hidden_state = torch.tanh(self._initial_hidden_state).expand(action.shape[:-1], -1)
+        # if hidden_state is None:
+        #     hidden_state = torch.tanh(self._initial_hidden_state).expand(action.shape[:-1], -1)
 
         # If not providing a posterior, infer the prior from the hidden state
         # if posterior is None:
         #     posterior = self.infer_stochastic(hidden_state)[1]
         #     posterior = self.infer_stochastic(hidden_state, embedded_obs)[1]
 
+        # Infer batch dim
+        if batch_dim is None:
+            if action is not None:
+                batch_dim = action.shape[0]
+            elif posterior is not None:
+                batch_dim = posterior.shape[0]
+            elif hidden_state is not None:
+                batch_dim = hidden_state.shape[0]
+            elif embedded_obs is not None:
+                batch_dim = embedded_obs.shape[0]
+            else:
+                raise ValueError(
+                    'At least one of `action`, `posterior`, `hidden_state`, or `embedded_obs`'
+                    ' must be provided if `batch_dim` is not defined.')
+
         # Initialize returns
         return_dict = {}
 
         # Update the hidden state using the recurrent model
-        hidden_state = self._recurrent_model(torch.cat((posterior, action), dim=-1), hidden_state)
+        # NOTE: Redundant calculations when overwritten by initialize, but might be more
+        #       efficient to avoid indexing
+        if posterior is not None and action is not None and hidden_state is not None:
+            hidden_state = self._recurrent_model(torch.cat((posterior, action), dim=-1), hidden_state)
+            if initialize is not None:
+                initialize = initialize.unsqueeze(-1) if hidden_state.ndim > 1 else initialize
+                hidden_state = (
+                    (1 - initialize) * hidden_state
+                    + initialize * torch.tanh(self._initial_hidden_state).expand(action.shape[:-1], -1)
+                )
+        # Initialize if anything is missing
+        else:
+            hidden_state = torch.tanh(self._initial_hidden_state).expand(batch_dim, -1)
         return_dict['hidden_state'] = hidden_state
 
         # Get the prior distribution from the transition model
@@ -521,3 +557,64 @@ class RSSM(nn.Module):
             return_dict['posterior'] = posterior
 
         return return_dict
+
+
+class Actor(nn.Module):
+    """Actor network.
+
+    Pulls action heads from a latent representation and samples.
+
+    """
+    def __init__(
+        self,
+        input_dim: int,
+        actions: list[actions.Action],
+        hidden_dim: int = 512
+    ) -> None:
+        """Initialize the actor network.
+
+        :param input_dim: The dimension of the input vector.
+        :type input_dim: int
+        :param actions: A list of action definitions, can be continuous or discrete.
+        :type actions: list[fishyrl.actions.Action]
+        :param hidden_dim: The dimension of the hidden layers. (Default: ``512``)
+        :type hidden_dim: int
+
+        """
+        super().__init__()
+
+        # Parameters
+        self._actions = actions
+
+        # Extract input and output sizes
+        self._input_dims = [action.input_dim for action in actions]
+        self._output_dims = [action.output_dim for action in actions]
+
+        # Create base model
+        self._model = MLP(
+            input_dim,
+            output_dim=sum(self._input_dims),
+            hidden_dims=5 * [hidden_dim],
+        )
+
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Perform a forward pass through the actor network.
+
+        :param x: The input tensor of shape (batch_dim, input_dim).
+        :type x: torch.Tensor
+        :return: A tuple containing the sampled actions and their distributions.
+        :rtype: tuple[torch.Tensor, torch.Tensor]
+
+        """
+        # Compute logits
+        x = self._model(x)
+
+        # Sample each action
+        actions, distributions = [], []
+        for action, logits in zip(self._actions, x.split(self._input_dims, dim=-1)):
+            # Sample each action
+            head_actions, head_dist = action.sample(logits)
+            actions.append(head_actions)
+            distributions.append(head_dist)
+
+        return torch.cat(actions, dim=-1), distributions

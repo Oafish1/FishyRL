@@ -1,3 +1,12 @@
+# 0.6.0
+- Add `actions` module and definitions for `actions.Action`, `actions.ContinuousActions`, and `actions.DiscreteAction`
+- Construct complete inference loop
+- Fix development dependencies and `make build` command
+- General syntax and naming changes
+- Implement actor (`models.Actor`) and critic models
+- Implement reward and continue predictions
+- Vectorize environments
+
 # 0.5.0
 - Add `output_dim` argument to `models.MLP` for unnormalized output
 - Fix transition and representation model structures in example notebook

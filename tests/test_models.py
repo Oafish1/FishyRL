@@ -25,7 +25,7 @@ def test_RecurrentModel():
     torch.manual_seed(42)
     x = torch.randn(2, 10)
     # Create the recurrent model
-    model = fishyrl.models.RecurrentModel(input_size=10, hidden_size=5)
+    model = fishyrl.models.RecurrentModel(input_dim=10, hidden_dim=5)
     # Test the forward pass with no initial hidden state
     h0 = model(x)
     assert h0.shape == (2, 5)
