@@ -1,4 +1,4 @@
-from . import actions, distributions, losses, models
+from . import actions, buffers, distributions, losses, models
 
 
 # https://github.com/Eclectic-Sheep/sheeprl/tree/main

@@ -1,3 +1,7 @@
+# 0.7.0
+- Add `buffers` module with `Buffer`, `SequentialBuffer` and `IndependentVectorizedBufferGroup` and implement in main loop
+- Incorporate main loop logic with training cutaway
+
 # 0.6.0
 - Add `actions` module and definitions for `actions.Action`, `actions.ContinuousActions`, and `actions.DiscreteAction`
 - Construct complete inference loop
