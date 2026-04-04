@@ -2,8 +2,10 @@
 
 import warnings
 from abc import abstractmethod
+from typing import Any
 
 import numpy as np
+import torch
 
 
 class Buffer:
@@ -49,7 +51,7 @@ class Buffer:
 
 class SequentialBuffer(Buffer):
     """A buffer that stores experiences sequentially."""
-    def __init__(self, capacity: int, validate_keys: bool = True) -> None:
+    def __init__(self, capacity: int, validate_keys: bool = True, seed: int = None) -> None:
         """Initialize the buffer.
 
         :param capacity: The maximum number of experiences to store.
@@ -61,6 +63,9 @@ class SequentialBuffer(Buffer):
         # Parameters
         self._capacity = capacity
         self._validate_keys = validate_keys
+
+        # Initialize rng
+        self._rng = np.random.default_rng(seed=seed)
 
         # Initialize buffer
         self.reset()
@@ -127,26 +132,37 @@ class SequentialBuffer(Buffer):
             self._full = True
             self._curptr = 0
 
-    def sample(self, batch_size: int) -> dict[str, np.ndarray]:
+    def sample(self, batch_size: int, sequence_length: int) -> dict[str, np.ndarray]:
         """Sample a batch of experiences from the buffer.
 
         :param batch_size: The number of experiences to sample.
         :type batch_size: int
+        :param sequence_length: The length of each sampled experience.
+        :type sequence_length: int
         :return: A batch of experiences, represented as a dictionary of numpy arrays.
         :rtype: dict[str, np.ndarray]
 
         """
-        # Ensure batch size is not larger than buffer size
-        if batch_size > self.size:
-            raise ValueError(f'Batch size {batch_size} larger than buffer size {self.size}.')
+        # Ensure batch size is not larger than buffer size, not needed with replacement
+        # if batch_size > self.size:
+        #     raise ValueError(f'Batch size {batch_size} larger than buffer size {self.size}.')
 
-        # Sample experiences
-        idx = np.random.choice(self.size, size=batch_size, replace=False)
-        return {k: v[idx] for k, v in self._buffer.items()}
+        # Sample start points
+        idx = self._rng.choice(self.size - sequence_length + 1, size=batch_size, replace=True)  # TODO: Evaluate replace
+
+        # Offset indices based on pointer if buffer is full
+        if self._full:
+            idx = (idx + self._curptr) % self._capacity
+
+        # Add batch dimension as range
+        idx = idx[:, None] + np.arange(sequence_length)[None, :]
+
+        # Index into buffer and return batch
+        return {k: np.take(v, idx, mode='wrap', axis=0) for k, v in self._buffer.items()}
 
 
-class IndependentVectorizedBufferGroup(Buffer):
-    """Class for grouping independent buffers for vectorized environments."""
+class IndependentVectorizedBuffer(Buffer):
+    """Class for group manipulation of independent buffers for vectorized environments."""
     def __init__(self, num_buffers: int, *buffer_args: list, buffer_class: Buffer = SequentialBuffer, **buffer_kwargs: dict) -> None:
         """Initialize the buffer group.
 
@@ -192,11 +208,13 @@ class IndependentVectorizedBufferGroup(Buffer):
         for i, buffer in enumerate(self._buffers):
             buffer.add({k: v[i] for k, v in experience.items()})
 
-    def sample(self, batch_size: int) -> dict[str, np.ndarray]:
+    def sample(self, batch_size: int, **sample_kwargs: dict[str, Any]) -> dict[str, np.ndarray]:
         """Sample a batch of experiences from each buffer and concatenate them.
 
         :param batch_size: The number of experiences to sample, divided equally among buffers.
         :type batch_size: int
+        :param sample_kwargs: Additional keyword arguments to pass to each buffer's sample method.
+        :type sample_kwargs: dict[str, Any]
         :return: A batch of experiences, represented as a dictionary of numpy arrays.
         :rtype: dict[str, np.ndarray]
 
@@ -209,5 +227,19 @@ class IndependentVectorizedBufferGroup(Buffer):
         per_buffer_batch_size = batch_size // len(self._buffers)
 
         # Sample from each buffer and concatenate
-        batches = [buffer.sample(per_buffer_batch_size) for buffer in self._buffers]
+        batches = [buffer.sample(per_buffer_batch_size, **sample_kwargs) for buffer in self._buffers]
         return {k: np.concatenate([batch[k] for batch in batches], axis=0) for k in batches[0].keys()}
+
+
+def convert_samples_to_tensors(samples: dict[str, np.ndarray], **tensor_kwargs: dict[str, Any]) -> dict[str, torch.Tensor]:
+    """Convert sampled experiences from numpy arrays to tensors.
+
+    :param samples: A batch of experiences, represented as a dictionary of numpy arrays.
+    :type samples: dict[str, np.ndarray]
+    :param tensor_kwargs: Keyword arguments to pass to the torch.tensor constructor, usually for specifying device.
+    :type tensor_kwargs: dict[str, Any]
+    :return: A batch of experiences, represented as a dictionary of tensors.
+    :rtype: dict[str, torch.Tensor]
+
+    """
+    return {k: torch.from_numpy(v).to(**tensor_kwargs) for k, v in samples.items()}

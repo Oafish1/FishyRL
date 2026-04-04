@@ -514,17 +514,20 @@ class RSSM(nn.Module):
         # Infer batch dim
         if batch_dim is None:
             if action is not None:
-                batch_dim = action.shape[0]
+                batch_dim = action.shape[:-1]
             elif posterior is not None:
-                batch_dim = posterior.shape[0]
+                batch_dim = posterior.shape[:-1]
             elif hidden_state is not None:
-                batch_dim = hidden_state.shape[0]
+                batch_dim = hidden_state.shape[:-1]
             elif embedded_obs is not None:
-                batch_dim = embedded_obs.shape[0]
+                batch_dim = embedded_obs.shape[:-1]
             else:
                 raise ValueError(
                     'At least one of `action`, `posterior`, `hidden_state`, or `embedded_obs`'
                     ' must be provided if `batch_dim` is not defined.')
+        # Format if `batch_dim` is an int
+        elif isinstance(batch_dim, int):
+            batch_dim = (batch_dim,)
 
         # Initialize returns
         return_dict = {}
@@ -537,12 +540,12 @@ class RSSM(nn.Module):
             if initialize is not None:
                 initialize = initialize.unsqueeze(-1) if hidden_state.ndim > 1 else initialize
                 hidden_state = (
-                    (1 - initialize) * hidden_state
-                    + initialize * torch.tanh(self._initial_hidden_state).expand(action.shape[:-1], -1)
+                    ~initialize * hidden_state
+                    + initialize * torch.tanh(self._initial_hidden_state).expand(*batch_dim, -1)
                 )
         # Initialize if anything is missing
         else:
-            hidden_state = torch.tanh(self._initial_hidden_state).expand(batch_dim, -1)
+            hidden_state = torch.tanh(self._initial_hidden_state).expand(*batch_dim, -1)
         return_dict['hidden_state'] = hidden_state
 
         # Get the prior distribution from the transition model

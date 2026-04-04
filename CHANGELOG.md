@@ -1,3 +1,10 @@
+# 0.8.0
+- Add `convert_samples_to_tensors` to `buffers` module for converting from `numpy`
+- Add `sequence_length` argument to buffer sampling
+- Develop initial training step function
+- Fix initializations array in main loop and `models.RSSM` class
+- Separate main loop and training step function
+
 # 0.7.0
 - Add `buffers` module with `Buffer`, `SequentialBuffer` and `IndependentVectorizedBufferGroup` and implement in main loop
 - Incorporate main loop logic with training cutaway
