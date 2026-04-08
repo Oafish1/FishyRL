@@ -9,4 +9,4 @@ def test_mse_loss():
     loss = fishyrl.losses.mse_loss(prior, posterior)
     assert loss.shape == (2,)
     assert loss.requires_grad
-    assert torch.allclose(loss, -torch.tensor([1.0, 0.25]))
+    assert torch.allclose(loss, torch.tensor([1.0, 0.25]))

@@ -57,13 +57,15 @@ class MLP(nn.Module):
 
 class MLPEncoder(nn.Module):
     """MLP encoder for processing vector observations."""
-    def __init__(self, input_dim: int, output_dim: int, hidden_dim: int = 512) -> None:
+    def __init__(self, input_dim: int, output_dim: int, num_blocks: int = 4, hidden_dim: int = 512) -> None:
         """Initialize the MLP encoder.
 
         :param input_dim: The dimension of the input vector observation.
         :type input_dim: int
         :param output_dim: The dimension of the output vector.
         :type output_dim: int
+        :param num_blocks: The number of blocks in the MLP. (Default: ``4``)
+        :type num_blocks: int
         :param hidden_dim: The dimension of the hidden layers. (Default: ``512``)
         :type hidden_dim: int
 
@@ -73,7 +75,7 @@ class MLPEncoder(nn.Module):
         # Create model
         self._model = MLP(
             input_dim=input_dim,
-            hidden_dims=3 * [hidden_dim] + [output_dim],
+            hidden_dims=num_blocks * [hidden_dim] + [output_dim],
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -90,13 +92,15 @@ class MLPEncoder(nn.Module):
 
 class MLPDecoder(nn.Module):
     """MLP decoder for reconstructing vector observations from latent representations."""
-    def __init__(self, input_dim: int, output_dim: int, hidden_dim: int = 512) -> None:
+    def __init__(self, input_dim: int, output_dim: int, num_blocks: int = 4, hidden_dim: int = 512) -> None:
         """Initialize the MLP decoder.
 
         :param input_dim: The dimension of the input tensor.
         :type input_dim: int
         :param output_dim: The dimension of the output vector observations.
         :type output_dim: int
+        :param num_blocks: The number of blocks in the MLP. (Default: ``4``)
+        :type num_blocks: int
         :param hidden_dim: The dimension of the hidden layers. (Default: ``512``)
         :type hidden_dim: int
 
@@ -107,7 +111,7 @@ class MLPDecoder(nn.Module):
         self._model = MLP(
             input_dim=input_dim,
             output_dim=output_dim,
-            hidden_dims=3 * [hidden_dim],
+            hidden_dims=num_blocks * [hidden_dim],
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -482,7 +486,8 @@ class RSSM(nn.Module):
         """Perform one step of the RSSM.
 
         Will compute the hidden state using action, posterior, and previous hidden state. If not available,
-        will instead use the initial hidden state.
+        will instead use the initial hidden state. If `embedded_obs` is not provided, imagines the next
+        hidden state.
 
         :param action: The action taken, of shape (batch_dim, action_dim).
         :type action: torch.Tensor | None

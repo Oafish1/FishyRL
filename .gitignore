@@ -10,3 +10,6 @@ __pycache__/
 
 # Installer eggs
 *.egg-info/
+
+# Tensorboard logs
+examples/runs/

@@ -48,7 +48,7 @@ class TwoHot:
         :rtype: torch.Tensor
 
         """
-        return (self._probs * self._bin_values).sum(dim=-1)
+        return symexp((self._probs * self._bin_values).sum(dim=-1))
 
     def log_prob(self, value: torch.Tensor) -> torch.Tensor:
         """Compute the log probability of the given value under the distribution.

@@ -16,4 +16,4 @@ def mse_loss(prior: torch.Tensor, posterior: torch.Tensor, dims: int = 1) -> tor
     :rtype: torch.Tensor
 
     """
-    return - (prior - posterior).square().mean(dim=[-i for i in range(1, dims + 1)])
+    return (prior - posterior).square().mean(dim=[-i for i in range(1, dims + 1)])

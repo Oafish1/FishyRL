@@ -1,3 +1,16 @@
+# 0.10.0
+- Add `actions.construct_actions` utility function
+- Add `construct` method to `actions.Action` and all child actions
+- Add initialization methods
+- Add random action sampling before training
+- Add `tensorboard` integration
+- Add `utilities` module with `MovingMinMaxScaler` lambda value scaler
+- Change parameter default values across most models
+- Fix advantage utilization, observation loss clipping, `losses.mse_loss`, and actor loss formulation
+- Fix continuous action `actions.ContinuousActions` sample distribution event dimension
+- Fix `mean` output from `distributions.TwoHot`
+- Implement actor and critic losses, target critic model, and missing hyperparameters
+
 # 0.9.0
 - Add `symexp` and `TwoHot` to `distributions` module
 - Fix and add `dims` argument to `mse_loss`

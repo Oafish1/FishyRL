@@ -53,6 +53,18 @@ class Action(nn.Module):
         pass
 
     @abstractmethod
+    def construct(self, action: torch.Tensor) -> torch.Tensor:
+        """Construct the full action from the simplified action.
+
+        :param action: The simplified action of shape (batch_dim).
+        :type action: torch.Tensor
+        :return: The full action of shape (batch_dim, output_dim).
+        :rtype: torch.Tensor
+
+        """
+        pass
+
+    @abstractmethod
     def sample(self, logits: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Sample an action from the logits.
 
@@ -70,7 +82,8 @@ class ContinuousActions(Action):
     def __init__(
             self,
             num_actions: int = 1,
-            std_min: float = 1,
+            std_init: float = 1,
+            std_min: float = .1,
             std_max: float = 1,
             clip: float = 0,
         ) -> None:
@@ -90,6 +103,7 @@ class ContinuousActions(Action):
 
         # Parameters
         self._num_actions = num_actions
+        self._std_init = std_init
         self._std_min = std_min
         self._std_max = std_max
         self._clip = clip
@@ -134,6 +148,19 @@ class ContinuousActions(Action):
         """
         return x
 
+    def construct(self, action: torch.Tensor) -> torch.Tensor:
+        """Construct the full action from the simplified action.
+
+        This is a no-op for continuous actions.
+
+        :param action: The simplified action of shape (batch_dim, output_dim).
+        :type action: torch.Tensor
+        :return: The same action(s) of shape (batch_dim, output_dim).
+        :rtype: torch.Tensor
+
+        """
+        return action
+
     def sample(self, logits: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Sample logits using `Normal`, clipped to [-clip, clip].
 
@@ -149,11 +176,10 @@ class ContinuousActions(Action):
 
         # Process mean and std
         mean = torch.tanh(mean)
-        std = (self._std_max - self._std_min) * (std + 1) + self._std_min
-        std = torch.sigmoid(std)
+        std = (self._std_max - self._std_min) * torch.sigmoid(std + self._std_init) + self._std_min
 
         # Create distribution and sample
-        dist = torch.distributions.Normal(mean, std)
+        dist = torch.distributions.Independent(torch.distributions.Normal(mean, std), 1)
         actions = dist.rsample()
 
         # Clip actions
@@ -221,6 +247,25 @@ class DiscreteAction(Action):
         """
         return torch.argmax(x, dim=-1, keepdim=True)
 
+    def construct(self, action: torch.Tensor) -> torch.Tensor:
+        """Construct the full action from the simplified action.
+
+        Converts the provided action index to a one-hot vector.
+
+        :param action: The simplified action of shape (batch_dim, 1).
+        :type action: torch.Tensor
+        :return: One-hot action of shape (batch_dim, output_dim).
+        :rtype: torch.Tensor
+
+        """
+        # Check that all values are close to integers
+        if not torch.allclose(action, action.round()):
+            raise ValueError("Discrete action values must be close to integers.")
+
+        # Cast to long and convert to one-hot
+        action = action.long()
+        return torch.nn.functional.one_hot(action.squeeze(-1), num_classes=self._num_options).to(torch.get_default_dtype())
+
     def sample(self, logits: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Sample logits using `OneHotCategoricalStraightThrough`.
 
@@ -233,7 +278,7 @@ class DiscreteAction(Action):
         """
         # Create and sample from distribution
         dist = torch.distributions.OneHotCategoricalStraightThrough(
-            logits=distributions.uniform_mix(logits)[0])
+                logits=distributions.uniform_mix(logits)[0])
         return dist.rsample(), dist
 
 
@@ -252,5 +297,24 @@ def simplify_actions(actions: torch.Tensor, model_actions: list[Action]) -> torc
         for a, ma
         in zip(
             actions.split([ma.output_dim for ma in model_actions], dim=-1),
+            model_actions)
+    ], dim=-1)
+
+
+def construct_actions(actions: torch.Tensor, model_actions: list[Action]) -> torch.Tensor:
+    """Construct actions using the action definitions provided.
+
+    :param actions: The simplified actions of shape (batch_dim, sum(num_actions)).
+    :type actions: torch.Tensor
+    :param model_actions: A list of action definitions.
+    :type model_actions: list[Action]
+    :return: The full actions of shape (batch_dim, sum(output_dim)).
+    :rtype: torch.Tensor
+    """
+    return torch.cat([
+        ma.construct(a)
+        for a, ma
+        in zip(
+            actions.split([ma.num_actions for ma in model_actions], dim=-1),
             model_actions)
     ], dim=-1)
