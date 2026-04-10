@@ -1,10 +1,13 @@
 """Utilities for state management and common operations."""
 
+import enum
+import functools
 from typing import Any
 
 import numpy as np
 import torch
-import torch.nn as nn
+import yaml
+from torch import nn
 
 
 class MovingMinMaxScaler(nn.Module):
@@ -19,9 +22,13 @@ class MovingMinMaxScaler(nn.Module):
         """Initialize the ``MovingMinMaxScaler``.
 
         :param beta: The decay rate for the moving min and max. (Default: ``0.99``)
+        :type beta: float
         :param eps: Minimal value for the computed high-low range. (Default: ``1e-8``)
+        :type eps: float
         :param frac_low: The lower percentile for scaling. (Default: ``0.05``)
+        :type frac_low: float
         :param frac_high: The upper percentile for scaling. (Default: ``0.95``)
+        :type frac_high: float
 
         """
         super().__init__()
@@ -40,6 +47,7 @@ class MovingMinMaxScaler(nn.Module):
         """Update and return the low and range estimates.
 
         :param x: The input tensor to use while updating the estimates.
+        :type x: torch.Tensor
         :return: A tuple containing the low estimate and the range estimate.
         :rtype: Tuple[torch.Tensor, torch.Tensor]
 
@@ -58,14 +66,17 @@ class MovingMinMaxScaler(nn.Module):
         return self._low, torch.max(self._high - self._low, self._eps)
 
 
-class Ratio:
+class Ratio(nn.Module):
     """Module for computing the number of gradient update steps."""
     def __init__(self, ratio: float = 1.) -> None:
         """Initialize ``Ratio``.
 
         :param ratio: The ratio of gradient update steps to environment steps. (Default: ``1.0``)
+        :type ratio: float
 
         """
+        super().__init__()
+
         # Parameters
         self._ratio = ratio
         self._step = 0
@@ -74,6 +85,7 @@ class Ratio:
         """Compute the number of gradient update steps for the given environment step.
 
         :param step: The current environment step.
+        :type step: int
         :return: The number of gradient update steps to perform.
         :rtype: int
 
@@ -96,10 +108,214 @@ class Ratio:
         """Load the state of the module from a dictionary.
 
         :param state_dict: The state dictionary to load from.
+        :type state_dict: dict[str, Any]
 
         """
         self._ratio = state_dict['_ratio']
         self._step = state_dict['_step']
+
+
+class DotDict(dict):
+    """Allow accessing dictionary keys as attributes.
+
+    Attribute access code from https://stackoverflow.com/a/23689767 and SheepRL
+
+    """
+    def __init__(self, *args: list, **kwargs: dict[str, Any]) -> None:
+        """Initialize the ``DotDict``.
+
+        :param args: Positional arguments to initialize the dictionary.
+        :type args: list
+        :param kwargs: Keyword arguments to initialize the dictionary.
+        :type kwargs: dict[str, Any]
+
+        """
+        super().__init__(*args, **kwargs)
+
+        # Crawl nested dictionaries and convert them to dotdicts
+        self._crawl(self)
+
+    def _crawl(self, lookup: dict | list) -> None:
+        """Recursively convert nested dictionaries to ``DotDict``.
+
+        Crawls through dictionaries and lists.
+
+        :param lookup: The dictionary or list to crawl through.
+        :type lookup: dict | list
+
+        """
+        if isinstance(lookup, dict):
+            pack = lookup.items()
+        elif isinstance(lookup, list):
+            pack = enumerate(lookup)
+        for k, v in pack:
+            if isinstance(v, dict):
+                lookup[k] = DotDict(v)
+                self._crawl(lookup[k])
+            elif isinstance(v, list):
+                self._crawl(lookup[k])
+
+    # Attribute access to dictionary keys
+    __getattr__ = dict.get
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
+
+
+class ContainerModule(nn.Module):
+    """Module for containing multiple submodules."""
+    def __init__(self, **modules: nn.Module) -> None:
+        """Initialize the ``ContainerModule``.
+
+        :param modules: The submodules to contain.
+        :type modules: dict[str, nn.Module]
+
+        """
+        super().__init__()
+
+        # Register the submodules
+        for name, module in modules.items():
+            self.add_module(name, module)
+
+
+def load_config(*paths: list[str], list_behavior: str = 'replace') -> DotDict:
+    """Load and merge YAML configuration files into a single ``DotDict``, with priority given to earlier files.
+
+    :param paths: The paths to the YAML configuration files to load.
+    :type paths: list[str]
+    :param list_behavior: The behavior for merging lists. Can be either 'replace' or 'merge'. (Default: ``'replace'``)
+    :type list_behavior: str
+
+    :return: A ``DotDict`` containing the merged configuration.
+    :rtype: DotDict
+
+    """
+    # Load and merge the YAML files
+    cfg = DotDict()
+    for path in paths[::-1]:
+        with open(path, 'r') as f:
+            new_cfg = yaml.load(f, Loader=yaml.SafeLoader)
+            _merge_dotdicts(cfg, DotDict(new_cfg), list_behavior=list_behavior)
+
+    return cfg
+
+
+def _merge_dotdicts(base: DotDict, new: DotDict, list_behavior: str = 'replace') -> None:
+    """Merge two ``DotDict`` objects, with priority given to the new one.
+
+    :param base: The base ``DotDict`` to merge into.
+    :type base: DotDict
+    :param new: The new ``DotDict`` to merge from.
+    :type new: DotDict
+    :param list_behavior: The behavior for merging lists. Can be either 'replace' or 'merge'. (Default: ``'replace'``)
+    :type list_behavior: str
+
+    """
+    # Loop through the new dictionary and merge it into the base dictionary
+    for k, v in new.items():
+        # If the key is in base, examine further
+        if k in base:
+            # If dictionary, recurse
+            if isinstance(base[k], dict) and isinstance(v, dict):
+                _merge_dotdicts(base[k], v, list_behavior=list_behavior)
+            # If list, either replace or merge
+            elif isinstance(base[k], list) and isinstance(v, list):
+                if list_behavior == 'replace':
+                    base[k] = v
+                elif list_behavior == 'merge':
+                    base[k].extend(v)
+                else:
+                    raise ValueError(f'Invalid list behavior strategy, "{list_behavior}".')
+            # Otherwise, replace
+            else:
+                base[k] = v
+        # Otherwise, add to base
+        else:
+            base[k] = v
+
+
+def optional_flatten_cfg(func: callable = None, exceptions: list[str] = []) -> callable:
+    """Decorator to optionallly flatten a config DotDict before passing it to the function.
+
+    :param func: The function to decorate.
+    :type func: Callable
+    :param exceptions: A list of keys to exclude from flattening. (Default: ``[]``)
+        As an example, the key ``'model_default'`` will tell the decorator to not flatten
+        ``cfg.model.default.*`` and instead pass it to the function as a DotDict using the
+        argument ``'model_default'``, where it would have otherwise passed
+        ``'model_default_embedded'``, ``'model_default_blocks'``, etc.
+    :type exceptions: list[str]
+
+    """
+    @functools.wraps(func)
+    def decorator(f: callable) -> callable:
+        @functools.wraps(f)
+        def wrapper(*args: list[Any], cfg: DotDict = None, **kwargs: dict[str, Any]) -> Any:  # noqa: ANN401
+            # If cfg is provided, flatten and revise kwargs
+            if cfg is not None:
+                new_kwargs = _flatten_dict(cfg, exceptions=exceptions)
+                new_kwargs.update(kwargs)  # Overwrite cfg kwargs with manual kwargs
+                kwargs = new_kwargs
+            # Otherwise, just use normally
+            return f(*args, **kwargs)
+
+        return wrapper
+
+    # If directly used as a decorator, return the wrapper
+    if func:
+        return decorator(func)
+
+    # Otherwise, return the decorator to generate the wrapper
+    return decorator
+
+
+def _flatten_dict(
+    base: DotDict | dict,
+    exceptions: list[str] = [],
+    sep: str = '_',
+    _key: str = '',
+    _result: dict = {},
+) -> dict:
+    """Recursively flatten a nested ``DotDict`` into a single-level ``DotDict`` with concatenated keys.
+
+    :param base: The base ``DotDict`` to flatten.
+    :type base: DotDict
+    :param exceptions: A list of keys to exclude from flattening. (Default: ``[]``)
+        See the documentation for the ``optional_flatten_cfg`` decorator for more details.
+    :type exceptions: list[str]
+    :param sep: The separator to use when concatenating keys. (Default: ``'_'``)
+    :type sep: str
+    :param _key: The current key prefix during recursion. (Default: ``''``)
+    :type _key: str
+    :param _result: The current result dictionary during recursion. (Default: ``{}``)
+    :type _result: dict
+    :return: A flattened dictionary with concatenated keys.
+    :rtype: dict
+
+    """
+    # Loop through items
+    for k, v in base.items():
+        # Create new key
+        new_k = f'{_key}{sep}{k}' if _key else k
+        # If value is a dictionary and new key is not in exceptions, recurse
+        if isinstance(v, dict) and new_k not in exceptions:
+            _flatten_dict(v, exceptions=exceptions, sep=sep, _key=new_k, _result=_result)
+        # Otherwise, add to result
+        else: _result[new_k] = v
+    return _result
+
+
+class CaseInsensitiveEnumMeta(enum.EnumMeta):
+    """Enum meta class for case-insensitive lookup."""
+    def __getitem__(cls, value: str) -> Any:  # noqa: ANN401
+        """Override the default item access to perform case-insensitive lookup.
+
+        :param value: The value to look for.
+        :type value: str
+        :return: The matching enum member.
+        :rtype: Any
+
+        """
+        return super().__getitem__(value.upper()).value
 
 
 # Taken from SheepRL

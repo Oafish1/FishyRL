@@ -1,11 +1,13 @@
 """Utility action definitions for reinforcement learning agents."""
 
+import enum
 from abc import abstractmethod
 
 import torch
-import torch.nn as nn
+from torch import nn
 
-from . import distributions
+from . import distributions as frl_distributions
+from . import utilities as frl_utilities
 
 
 class Action(nn.Module):
@@ -284,8 +286,8 @@ class DiscreteAction(Action):
 
         """
         # Create and sample from distribution
-        dist = torch.distributions.OneHotCategoricalStraightThrough(
-                logits=distributions.uniform_mix(logits)[0])
+        dist = torch.frl_distributions.OneHotCategoricalStraightThrough(
+                logits=frl_distributions.uniform_mix(logits)[0])
         return dist.rsample(), dist
 
 
@@ -296,8 +298,8 @@ class TwoHotDiscretizedContinuousAction(Action):
             bins: int = 32,
             low: float = -1.,
             high: float = 1.,
-            pre_func: callable = distributions.identity,
-            post_func: callable = distributions.identity,
+            pre_func: callable = frl_distributions.identity,
+            post_func: callable = frl_distributions.identity,
             eps: float = 1e-8,
         ) -> None:
         """Initialize the action definition.
@@ -373,19 +375,19 @@ class TwoHotDiscretizedContinuousAction(Action):
         """
         return action
 
-    def sample(self, logits: torch.Tensor) -> tuple[torch.Tensor, distributions.TwoHot]:
+    def sample(self, logits: torch.Tensor) -> tuple[torch.Tensor, frl_distributions.TwoHot]:
         """Sample logits using a two-hot encoding.
 
         :param logits: The base logits of shape (batch_dim, input_dim).
         :type logits: torch.Tensor
         :return: Tuple containing the sampled action of shape (batch_dim, output_dim)
             and the distribution.
-        :rtype: tuple[torch.Tensor, distributions.TwoHot]
+        :rtype: tuple[torch.Tensor, frl_distributions.TwoHot]
 
         """
         # Create and sample from distribution
-        dist = distributions.TwoHot(
-            logits=distributions.uniform_mix(logits.unsqueeze(-2))[0],  # Add output_dim dimension
+        dist = frl_distributions.TwoHot(
+            logits=frl_distributions.uniform_mix(logits.unsqueeze(-2))[0],  # Add output_dim dimension
             # bins=self._bins,
             low=self._low,
             high=self._high,
@@ -404,8 +406,8 @@ class DiscretizedContinuousAction(Action):
             bins: int = 32,
             low: float = -1.,
             high: float = 1.,
-            pre_func: callable = distributions.identity,
-            post_func: callable = distributions.identity,
+            pre_func: callable = frl_distributions.identity,
+            post_func: callable = frl_distributions.identity,
             eps: float = 1e-8,
         ) -> None:
         """Initialize the action definition.
@@ -516,8 +518,16 @@ class DiscretizedContinuousAction(Action):
         """
         # Create and sample from distribution
         dist = torch.distributions.OneHotCategoricalStraightThrough(
-            logits=distributions.uniform_mix(logits)[0])
+            logits=frl_distributions.uniform_mix(logits)[0])
         return dist.rsample(), dist
+
+
+class ACTION_IDENTIFIERS(enum.Enum, metaclass=frl_utilities.CaseInsensitiveEnumMeta):
+    """String identifiers for action definitions, mapped to their corresponding classes."""
+    CONTINUOUS = ContinuousActions
+    DISCRETE = DiscreteAction
+    TWO_HOT_DISCRETIZED_CONTINUOUS = TwoHotDiscretizedContinuousAction
+    DISCRETIZED_CONTINUOUS = DiscretizedContinuousAction
 
 
 def simplify_actions(actions: torch.Tensor, model_actions: list[Action]) -> torch.Tensor:

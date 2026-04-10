@@ -24,6 +24,7 @@ extensions = [
     'sphinx.ext.doctest',
 ]
 templates_path = ['_templates']
+autosummary_generate = True
 exclude_patterns = []
 
 # Don't skip __init__ methods in autodoc

@@ -34,6 +34,8 @@ pillow==12.2.0
     # via tensorboard
 protobuf==7.34.1
     # via tensorboard
+pyyaml==6.0.3
+    # via fishyrl (pyproject.toml)
 sympy==1.14.0
     # via torch
 tensorboard==2.20.0

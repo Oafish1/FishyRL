@@ -18,7 +18,7 @@ build:
 # NOTE: May require `rm -rf ./docs/source/api` even with --remove-old, but doesn't work on Windows when folder doesn't exist
 .PHONY: build-docs
 build-docs:
-	sphinx-apidoc --separate --remove-old -o ./docs/source/api ./fishyrl
+	sphinx-apidoc --separate --remove-old -t ./docs/source/_templates -o ./docs/source/api ./fishyrl
 	make -C ./docs html
 
 # Run tests

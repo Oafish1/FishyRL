@@ -7,11 +7,8 @@ training:
   seed: 42
 
   # Timesteps
-  steps: 1e+6
+  steps: 1.0e+6
   pretrain_steps: 1024
-
-  # Training frequency
-  replay_ratio: 0.5
 
   # Sample dimensions
   batch_size: 16
@@ -23,37 +20,51 @@ training:
   lmbda: .95
   tau: .02
 
+# Ratio configuration
+replay:
+  ratio: 0.5
+
 # Buffer configuration
 buffer:
-  capacity: 1e+6
+  capacity: 1.0e+6
 
 # Scaling configuration
 scaler:
   eps: 1.0
 
 # Environment configuration
-environment:
-  num_envs: 4
+env:
+  num: 4
   name: 'CartPole-v1'
   actions:
     - type: "Discrete"
-      options: 2
+      num_options: 2
 
 # Model configuration
 model:
-  default:
+  global:
     # Hidden dimensions
     embedded: 256
     blocks: 1
     dense: 256
 
-    # Output dimensions
-    stochastic_dim: 32
-    deterministic_dim: 256
-
     # Bins
     categorical_bins: 32
     reward_bins: 255
 
-  rssm:
+    # Output dimensions
+    stochastic_dim: 32
+    deterministic_dim: 256
+
+  world:
+    lr: 1.0e-4
+    eps: 1.0e-8
     learnable_initial_state: false
+
+  actor:
+    lr: 8.0e-5
+    eps: 1.0e-5
+
+  critic:
+    lr: 8.0e-5
+    eps: 1.0e-5

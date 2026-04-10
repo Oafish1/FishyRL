@@ -6,9 +6,10 @@ from typing import Any
 
 import numpy as np
 import torch
+from torch import nn
 
 
-class Buffer:
+class Buffer(nn.Module):
     """Class template for buffers."""
     # TODO: Maybe add more properties here, pending use cases
     @property
@@ -80,6 +81,8 @@ class SequentialBuffer(Buffer):
         :type validate_keys: bool
 
         """
+        super().__init__()
+
         # Parameters
         self._capacity = capacity
         self._validate_keys = validate_keys
@@ -232,6 +235,8 @@ class IndependentVectorizedBuffer(Buffer):
         :type buffer_kwargs: dict
 
         """
+        super().__init__()
+
         # Initialize buffers
         self._buffers = [
             buffer_class(

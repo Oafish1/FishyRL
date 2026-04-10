@@ -1,3 +1,14 @@
+# 0.12.0
+- Add `actions.ACTION_IDENTIFIERS` enum for identifying action types from strings
+- Add `DotDict` class and multiple config loading, with merging and priority
+- Add `dreamer` module and contained method `construct_models`
+- Add `utilities.CaseInsensitiveEnumMeta` for case insensitive enum lookup
+- Add `utilities.ContainerModule` for combining multiple `nn.Module`s in one class instance
+- Add `utilities.load_config` utility
+- Add `utilities.optional_flatten_cfg` to feed function arguments from config files
+- Explicitly define documentation templates
+- Make buffers and `Ratio` modules to allow for easier containerization
+
 # 0.11.0
 - Add discretization strategy `actions.TwoHotDiscretizedContinuousAction` and `actions.DiscretizedContinuousAction`
 - Add `distributions.identity` utility function
