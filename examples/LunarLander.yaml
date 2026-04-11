@@ -1,10 +1,10 @@
 # Reaches optimality in 24k steps (1.6h), stabilizes around 33k (2.5h)
-name: "CartPole"
+name: "LunarLander"
 
 # Environment configuration
 env:
   num: 4
-  name: "CartPole-v1"
+  name: "LunarLander-v3"
   actions:
     - type: "Discrete"
-      num_options: 2
+      num_options: 4

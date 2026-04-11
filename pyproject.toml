@@ -1,12 +1,11 @@
 [project]
 name = "fishyrl"
-version = "0.12.0"
+version = "0.13.0"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "numpy",
     "pyyaml",  # For cfg
-    "tensorboard",  # Maybe optional
     "torch",
 ]
 
@@ -21,6 +20,16 @@ dev = [
 gym = [
     "gymnasium[classic_control,box2d]",
 ]
+extras = [
+    "imageio",  # For saving evaluation videos as gifs
+    # "moviepy==1.0.3",  # For recording videos in evaluation
+    "tensorboard",  # Maybe optional
+    "tensorflow", # Optional for tensorboard features
+]
+
+[build-system]
+requires = ["setuptools<81", "wheel"]  # Pinned to avoid issues with `gymnasium` rendering
+build-backend = "setuptools.build_meta"
 
 [tool.ruff]
 line-length = 80

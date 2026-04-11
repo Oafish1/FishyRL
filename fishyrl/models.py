@@ -6,7 +6,8 @@ from typing import Any
 import torch
 import torch.nn as nn
 
-from . import actions, distributions
+from . import actions as frl_actions
+from . import distributions as frl_distributions
 
 
 class MLP(nn.Module):
@@ -57,7 +58,7 @@ class MLP(nn.Module):
 
 class MLPEncoder(nn.Module):
     """MLP encoder for processing vector observations."""
-    def __init__(self, input_dim: int, output_dim: int, num_blocks: int = 4, hidden_dim: int = 512) -> None:
+    def __init__(self, input_dim: int, output_dim: int, num_blocks: int = 4, hidden_dim: int = 512, use_symlog: bool = True) -> None:
         """Initialize the MLP encoder.
 
         :param input_dim: The dimension of the input vector observation.
@@ -68,9 +69,14 @@ class MLPEncoder(nn.Module):
         :type num_blocks: int
         :param hidden_dim: The dimension of the hidden layers. (Default: ``512``)
         :type hidden_dim: int
+        :param use_symlog: Whether to apply symlog transformation to the input. (Default: ``True``)
+        :type use_symlog: bool
 
         """
         super().__init__()
+
+        # Parameters
+        self._use_symlog = use_symlog
 
         # Create model
         self._model = MLP(
@@ -87,8 +93,8 @@ class MLPEncoder(nn.Module):
         :rtype: torch.Tensor
 
         """
-        return self._model(distributions.symlog(x))
-
+        x = frl_distributions.symlog(x) if self._use_symlog else x
+        return self._model(x)
 
 class MLPDecoder(nn.Module):
     """MLP decoder for reconstructing vector observations from latent representations."""
@@ -454,7 +460,7 @@ class RSSM(nn.Module):
         logits = logits.view(*logits.shape[:-1], -1, self._bins)
 
         # Mix with uniform distribution
-        logits, probs = distributions.uniform_mix(logits)
+        logits, probs = frl_distributions.uniform_mix(logits)
 
         # Sample
         # NOTE: SheepRL uses `torch.distributions.Independent`, but this is unneeded since we never
@@ -580,7 +586,7 @@ class Actor(nn.Module):
     def __init__(
         self,
         input_dim: int,
-        actions: list[actions.Action],
+        actions: list[frl_actions.Action],
         hidden_dim: int = 512
     ) -> None:
         """Initialize the actor network.

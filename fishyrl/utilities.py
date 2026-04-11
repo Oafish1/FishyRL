@@ -177,6 +177,49 @@ class ContainerModule(nn.Module):
             self.add_module(name, module)
 
 
+class Container:
+    """Container for containing multiple submodules and utilities, without torch integration."""
+    def __init__(self, **modules: Any) -> None:  # noqa: ANN401
+        """Initialize the ``Container``.
+
+        :param modules: The submodules and utilities to contain.
+        :type modules: dict[str, Any]
+
+        """
+        # Register the submodules and utilities
+        for name, module in modules.items():
+            setattr(self, name, module)
+
+    def state_dict(self) -> dict[str, Any]:
+        """Return the state of the container as a dictionary.
+
+        :return: A dictionary containing the state of the container.
+        :rtype: dict[str, Any]
+
+        """
+        state = {}
+        for name, module in self.__dict__.items():
+            if not hasattr(module, 'state_dict'):
+                raise ValueError(f'Module "{name}" does not have a state_dict method.')
+            state[name] = module.state_dict()
+
+        return state
+
+    def load_state_dict(self, state_dict: dict[str, Any]) -> None:
+        """Load the state of the container from a dictionary.
+
+        :param state_dict: The state dictionary.
+        :type state_dict: dict[str, Any]
+
+        """
+        for name, module in self.__dict__.items():
+            if not hasattr(module, 'load_state_dict'):
+                raise ValueError(f'Module "{name}" does not have a load_state_dict method.')
+            if name not in state_dict:
+                raise ValueError(f'Module "{name}" not found in state dictionary.')
+            module.load_state_dict(state_dict[name])
+
+
 def load_config(*paths: list[str], list_behavior: str = 'replace') -> DotDict:
     """Load and merge YAML configuration files into a single ``DotDict``, with priority given to earlier files.
 
@@ -233,7 +276,7 @@ def _merge_dotdicts(base: DotDict, new: DotDict, list_behavior: str = 'replace')
             base[k] = v
 
 
-def optional_flatten_cfg(func: callable = None, exceptions: list[str] = []) -> callable:
+def optional_flatten_cfg(func: callable = None, exceptions: list[str] = [], exclusions: list[str] = []) -> callable:
     """Decorator to optionallly flatten a config DotDict before passing it to the function.
 
     :param func: The function to decorate.
@@ -244,6 +287,8 @@ def optional_flatten_cfg(func: callable = None, exceptions: list[str] = []) -> c
         argument ``'model_default'``, where it would have otherwise passed
         ``'model_default_embedded'``, ``'model_default_blocks'``, etc.
     :type exceptions: list[str]
+    :param exclusions: A list of keys to exclude from being passed to the function. (Default: ``[]``)
+    :type exclusions: list[str]
 
     """
     @functools.wraps(func)
@@ -252,7 +297,7 @@ def optional_flatten_cfg(func: callable = None, exceptions: list[str] = []) -> c
         def wrapper(*args: list[Any], cfg: DotDict = None, **kwargs: dict[str, Any]) -> Any:  # noqa: ANN401
             # If cfg is provided, flatten and revise kwargs
             if cfg is not None:
-                new_kwargs = _flatten_dict(cfg, exceptions=exceptions)
+                new_kwargs = _flatten_dict(cfg, exceptions=exceptions, exclusions=exclusions)
                 new_kwargs.update(kwargs)  # Overwrite cfg kwargs with manual kwargs
                 kwargs = new_kwargs
             # Otherwise, just use normally
@@ -271,6 +316,7 @@ def optional_flatten_cfg(func: callable = None, exceptions: list[str] = []) -> c
 def _flatten_dict(
     base: DotDict | dict,
     exceptions: list[str] = [],
+    exclusions: list[str] = [],
     sep: str = '_',
     _key: str = '',
     _result: dict = {},
@@ -282,6 +328,8 @@ def _flatten_dict(
     :param exceptions: A list of keys to exclude from flattening. (Default: ``[]``)
         See the documentation for the ``optional_flatten_cfg`` decorator for more details.
     :type exceptions: list[str]
+    :param exclusions: A list of keys to exclude from being passed to the function. (Default: ``[]``)
+    :type exclusions: list[str]
     :param sep: The separator to use when concatenating keys. (Default: ``'_'``)
     :type sep: str
     :param _key: The current key prefix during recursion. (Default: ``''``)
@@ -298,9 +346,10 @@ def _flatten_dict(
         new_k = f'{_key}{sep}{k}' if _key else k
         # If value is a dictionary and new key is not in exceptions, recurse
         if isinstance(v, dict) and new_k not in exceptions:
-            _flatten_dict(v, exceptions=exceptions, sep=sep, _key=new_k, _result=_result)
-        # Otherwise, add to result
-        else: _result[new_k] = v
+            _flatten_dict(v, exceptions=exceptions, exclusions=exclusions, sep=sep, _key=new_k, _result=_result)
+        # Otherwise, add to result if new key is not in exclusions
+        elif new_k not in exclusions:
+            _result[new_k] = v
     return _result
 
 

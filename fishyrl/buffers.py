@@ -6,10 +6,9 @@ from typing import Any
 
 import numpy as np
 import torch
-from torch import nn
 
 
-class Buffer(nn.Module):
+class Buffer:
     """Class template for buffers."""
     # TODO: Maybe add more properties here, pending use cases
     @property

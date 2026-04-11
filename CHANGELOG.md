@@ -1,3 +1,20 @@
+# 0.13.0
+- Add `dreamer.compute_actions` function for easier use of model
+- Add `dreamer.evaluate` function with ability to export video, and integration with `dreamer.train_loop` for upload to TensorBoard
+- Add `dreamer.save_models` and `dreamer.load_models`
+- Add `dreamer.train_loop` and `dreamer.learning_step` functions, migrating from the experimental notebook
+- Add `exclusions` argument to `utilities.optional_flatten_cfg`
+- Add `gym` optional dependencies to `make build` and `requirements-dev.txt`, also fixing autodeployment of documentation
+- Add per-environment cumulative reward logging by step
+- Add `use_symlog` argument to `models.MLPEncoder` for symlog normalization of observations
+- Critical bugfixes, mainly for scaling, normalization, and discounting to match with the Jax implementation
+- Fix soft critic target update logic
+- Move rendering and logging requirements to `extras`
+- Rename main notebook to `Dreamer`
+- Separate config files for model and environment
+- Train new models for `CartPole-v1` and `LunarLander-v3`
+- Update `README` with benchmarking results and examples
+
 # 0.12.0
 - Add `actions.ACTION_IDENTIFIERS` enum for identifying action types from strings
 - Add `DotDict` class and multiple config loading, with merging and priority

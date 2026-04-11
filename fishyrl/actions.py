@@ -286,7 +286,7 @@ class DiscreteAction(Action):
 
         """
         # Create and sample from distribution
-        dist = torch.frl_distributions.OneHotCategoricalStraightThrough(
+        dist = torch.distributions.OneHotCategoricalStraightThrough(
                 logits=frl_distributions.uniform_mix(logits)[0])
         return dist.rsample(), dist
 
