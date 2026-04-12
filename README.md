@@ -6,9 +6,25 @@
 
 <table>
     <tbody>
-        <!-- Ant -->
+        <!-- Hopper -->
         <!-- <tr>
-            <td colspan=4 style="text-align: center">MuJoCo Ant-v5</td>
+            <td colspan=4 style="text-align: center"><b>MuJoCo Hopper-v5</b></td>
+        </tr>
+        <tr>
+            <td style="text-align: center">10K Steps</td>
+            <td style="text-align: center">50K Steps</td>
+            <td style="text-align: center">100K Steps</td>
+            <td style="text-align: center">200K Steps</td>
+        </tr>
+        <tr>
+            <td style="text-align: center"><img src="./examples/images/Hopper_10k.gif" width="100%" alt="Trained Dreamer-V3 agent after 10k steps on MuJoCo Hopper-v5 environment"></td>
+            <td style="text-align: center"><img src="./examples/images/Hopper_50k.gif" width="100%" alt="Trained Dreamer-V3 agent after 50k steps on MuJoCo Hopper-v5 environment"></td>
+            <td style="text-align: center"><img src="./examples/images/Hopper_100k.gif" width="100%" alt="Trained Dreamer-V3 agent after 100k steps on MuJoCo Hopper-v5 environment"></td>
+            <td style="text-align: center"><img src="./examples/images/Hopper_200k.gif" width="100%" alt="Trained Dreamer-V3 agent after 200k steps on MuJoCo Hopper-v5 environment"></td>
+        </tr> -->
+        <!-- Ant -->
+        <tr bgcolor="#2b2b68" >
+            <td colspan=4 style="text-align: center"><b>MuJoCo Ant-v5</b></td>
         </tr>
         <tr>
             <td style="text-align: center">10K Steps</td>
@@ -21,10 +37,10 @@
             <td style="text-align: center"><img src="./examples/images/Ant_50k.gif" width="100%" alt="Trained Dreamer-V3 agent after 50k steps on MuJoCo Ant-v5 environment"></td>
             <td style="text-align: center"><img src="./examples/images/Ant_100k.gif" width="100%" alt="Trained Dreamer-V3 agent after 100k steps on MuJoCo Ant-v5 environment"></td>
             <td style="text-align: center"><img src="./examples/images/Ant_200k.gif" width="100%" alt="Trained Dreamer-V3 agent after 200k steps on MuJoCo Ant-v5 environment"></td>
-        </tr> -->
+        </tr>
         <!-- BipedalWalker -->
-        <tr>
-            <td colspan=4 style="text-align: center">LunarLander-v3</td>
+        <tr bgcolor="#2b2b68">
+            <td colspan=4 style="text-align: center"><b>LunarLander-v3</b></td>
         </tr>
         <tr>
             <td style="text-align: center">10K Steps</td>
@@ -39,8 +55,8 @@
             <td style="text-align: center"><img src="./examples/images/BipedalWalker_200k.gif" width="100%" alt="Trained Dreamer-V3 agent after 200k steps on BipedalWalker-v3 environment"></td>
         </tr>
         <!-- LunarLander -->
-        <tr>
-            <td colspan=4 style="text-align: center">LunarLander-v3</td>
+        <tr bgcolor="#2b2b68">
+            <td colspan=4 style="text-align: center"><b>LunarLander-v3</b></td>
         </tr>
         <tr>
             <td style="text-align: center">1K Steps</td>
@@ -55,8 +71,8 @@
             <td style="text-align: center"><img src="./examples/images/LunarLander_50k.gif" width="100%" alt="Trained Dreamer-V3 agent after 50k steps on LunarLander-v3 environment"></td>
         </tr>
         <!-- CartPole -->
-        <tr>
-            <td colspan=4 style="text-align: center">CartPole-v1</td>
+        <tr bgcolor="#2b2b68">
+            <td colspan=4 style="text-align: center"><b>CartPole-v1</b></td>
         </tr>
         <tr>
             <td style="text-align: center">1K Steps</td>

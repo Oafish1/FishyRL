@@ -1,0 +1,27 @@
+# MuJoCo Hopper
+name: "Hopper"
+
+# Environment configuration
+env:
+  num: 4
+  name: "Hopper-v5"
+  actions:
+    - type: "Discretized_Continuous"
+      bins: 5
+    - type: "Discretized_Continuous"
+      bins: 5
+    - type: "Discretized_Continuous"
+      bins: 5
+    # - type: "Continuous"
+    #   num_actions: 4
+    #   clip: 1.0
+
+# Training adjustments
+training:
+  # Sample dimensions
+  batch_size: 64
+  sequence_length: 16
+  imagination_horizon: 15
+
+  # Timesteps and frequency
+  pretrain_steps: 1024

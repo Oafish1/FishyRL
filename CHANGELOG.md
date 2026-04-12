@@ -1,3 +1,8 @@
+# 0.14.1
+- Add trained model for `Ant-v5` in `README`
+- Begin training model for `Hopper-v5` with associated config
+- Change coloring for results display in `README`
+
 # 0.14.0
 - Add checkpointing
 - Add preview for `BipedalWalker-v3` model in `README`
