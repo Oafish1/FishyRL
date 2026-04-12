@@ -1,6 +1,6 @@
 [project]
 name = "fishyrl"
-version = "0.13.0"
+version = "0.14.0"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -18,7 +18,7 @@ dev = [
     "sphinx",
 ]
 gym = [
-    "gymnasium[classic_control,box2d]",
+    "gymnasium[classic_control,box2d,mujoco]",  # Make sure to install OpenGL for MuJoCo
 ]
 extras = [
     "imageio",  # For saving evaluation videos as gifs

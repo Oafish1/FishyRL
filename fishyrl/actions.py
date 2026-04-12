@@ -408,7 +408,6 @@ class DiscretizedContinuousAction(Action):
             high: float = 1.,
             pre_func: callable = frl_distributions.identity,
             post_func: callable = frl_distributions.identity,
-            eps: float = 1e-8,
         ) -> None:
         """Initialize the action definition.
 
@@ -424,8 +423,6 @@ class DiscretizedContinuousAction(Action):
         :type pre_func: callable
         :param post_func: A function to apply to the output of the distribution. (Default: ``symexp``)
         :type post_func: callable
-        :param eps: A small value to add when computing entropy to avoid numerical issues. (Default: ``1e-8``)
-        :type eps: float
 
         """
         # Parameters
@@ -434,7 +431,6 @@ class DiscretizedContinuousAction(Action):
         self._high = high
         self._pre_func = pre_func
         self._post_func = post_func
-        self._eps = eps
 
         # Compute bin values
         self._bin_values = torch.linspace(low, high, bins)
@@ -501,7 +497,7 @@ class DiscretizedContinuousAction(Action):
         self._bin_values = self._bin_values.to(action.device)
 
         # Get bin indices for each action value
-        indices = torch.bucketize(action.squeeze(-1), self._bin_values)
+        indices = torch.bucketize(action.squeeze(-1).contiguous(), self._bin_values)  # Will sometimes warn about input tensor being non-contiguous
 
         # Convert to one-hot encoding
         return nn.functional.one_hot(indices, num_classes=self._bins).to(torch.get_default_dtype())

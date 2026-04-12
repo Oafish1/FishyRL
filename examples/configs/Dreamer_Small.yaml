@@ -1,0 +1,83 @@
+# Reaches optimality in 24k steps (1.6h), stabilizes around 33k (2.5h)
+name: "Dreamer_Small"
+
+# Checkpoint configuration
+checkpoint:
+  frequency: 5000
+
+# Evaluation configuration
+eval:
+  frequency: 2500
+
+# Training recipe
+training:
+  # Setup
+  seed: 42
+
+  # Timesteps and frequency
+  steps: 1000000
+  pretrain_steps: 1024
+  critic_target_update_freq: 1
+
+  # Sample dimensions
+  batch_size: 16
+  sequence_length: 64
+  imagination_horizon: 15
+
+  # Weights
+  free_nats: 1.0
+  kl_dyn: 0.5
+  kl_rep: 0.1
+  kl_reg: 1.0
+  continue_reg: 1.0
+
+  # Clipping
+  world_model_grad_clip: 1000.0
+  actor_model_grad_clip: 100.0
+  critic_model_grad_clip: 100.0
+
+  # Discount parameters
+  gamma: 0.997  # Corresponds to horizon of 333, (1 - 1/333) - Contdist in original code
+  lmbda: 0.95
+  tau: 0.02
+
+# Ratio configuration
+replay:
+  ratio: 0.5
+
+# Buffer configuration
+buffer:
+  capacity: 1000000
+
+# Scaling configuration
+scaler:
+  eps: 1.0
+
+# Model configuration
+model:
+  global:
+    # Hidden dimensions
+    embedded: 256
+    blocks: 1
+    dense: 256
+
+    # Bins
+    categorical_bins: 32
+    reward_bins: 255
+
+    # Output dimensions
+    stochastic_dim: 32
+    deterministic_dim: 256
+
+  world:
+    lr: 1.0e-4
+    eps: 1.0e-8
+    learnable_initial_state: false
+
+  actor:
+    lr: 8.0e-5
+    eps: 1.0e-5
+
+  critic:
+    lr: 8.0e-5
+    eps: 1.0e-5

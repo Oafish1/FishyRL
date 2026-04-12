@@ -1,3 +1,13 @@
+# 0.14.0
+- Add checkpointing
+- Add preview for `BipedalWalker-v3` model in `README`
+- Add tensor casting in `MLPEncoder`
+- Begin training for `Ant-v5` in `MuJoCo`
+- Fix logging chronology for episode rewards
+- Fix small performance bug with non-contiguous tensor bucketization
+- Reorganize file structure
+- Train new `LunarLander-v3` model
+
 # 0.13.0
 - Add `dreamer.compute_actions` function for easier use of model
 - Add `dreamer.evaluate` function with ability to export video, and integration with `dreamer.train_loop` for upload to TensorBoard

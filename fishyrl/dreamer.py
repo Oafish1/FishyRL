@@ -514,6 +514,7 @@ def learning_step(
     pred_continues = torch.cat((continue_targets.unsqueeze(-1), pred_continues), dim=-1)  # Use actual continues where possible
 
     # Compute lambda values
+    # TODO: Maybe at some point report these or anticipated rewards to dashboard
     # NOTE: These are not advantages
     # https://github.com/Eclectic-Sheep/sheeprl/blob/33b636681fd8b5340b284f2528db8821ab8dcd0b/sheeprl/algos/dreamer_v3/utils.py#L66
     # https://github.com/danijar/dreamerv3/blob/b65cf81a6fb13625af8722127459283f899a35d9/dreamerv3/agent.py#L482
@@ -675,6 +676,9 @@ def train_loop(
     actor_critic_model: frl_utilities.ContainerModule,
     utility_modules: frl_utilities.Container,
     tensorboard_writer: torch.utils.tensorboard.SummaryWriter = None,
+    # Checkpointing parameters
+    checkpoint_dir: str = None,
+    checkpoint_frequency: int = 5_000,
     # Evaluation parameters
     env_name: str = None,
     eval_frequency: int = 10**3,
@@ -701,6 +705,14 @@ def train_loop(
     :type utility_modules: frl_utilities.Container
     :param tensorboard_writer: The TensorBoard writer for logging, if desired. (Default: ``None``)
     :type tensorboard_writer: torch.utils.tensorboard.SummaryWriter
+    :param checkpoint_dir: The directory to save checkpoints in. (Default: ``None``)
+    :type checkpoint_dir: str
+    :param checkpoint_frequency: The frequency (in environment steps) for saving checkpoints. (Default: ``5_000``)
+    :type checkpoint_frequency: int
+    :param env_name: The name of the environment for evaluation purposes. (Default: ``None``)
+    :type env_name: str
+    :param eval_frequency: The frequency (in environment steps) for performing evaluations. (Default: ``10**3``)
+    :type eval_frequency: int
     :param training_steps: The total number of environment steps to train for. (Default: ``10**6``)
     :type training_steps: int
     :param training_pretrain_steps: The number of environment steps to pretrain the world model before starting training. (Default: ``1024``)
@@ -731,6 +743,7 @@ def train_loop(
 
     # Loop for specified number of iterations
     obs, info = envs.reset(seed=42)
+    obs = obs.astype(np.float32)
     for environment_step in range(0, training_steps, envs.num_envs):
         # Compute an action using the model
         # TODO: Make this easier for inference
@@ -770,22 +783,23 @@ def train_loop(
 
         # Step environment
         obs, rewards, terminations, truncations, infos = envs.step(env_actions)
+        obs = obs.astype(np.float32)  # TODO: Make mixed precision possible
         initializations = torch.tensor(terminations | truncations, dtype=torch.bool, device=device)
 
         # Iterate and record rewards if done, and also track cumulative rewards by environment
         cumulative_rewards += rewards
         for i in range(envs.num_envs):
+            # Track per-environment cumulative rewards
+            # NOTE: The tracked step is multiplied by the number of environments, but we keep it that way for easier comparison with total environment steps
+            if tensorboard_writer is not None:
+                tensorboard_writer.add_scalar(f'Reward/Environment_{i}', cumulative_rewards[i], environment_step)
+
             if terminations[i] or truncations[i]:
                 # TODO: Maybe differentiate between terminations and truncations in logging
                 if tensorboard_writer is not None:
                     tensorboard_writer.add_scalar('Reward/Episode', cumulative_rewards[i], environment_step)
                 cumulative_rewards[i] = 0
                 cumulative_episodes += 1
-
-            # Track per-environment cumulative rewards
-            # NOTE: The tracked step is multiplied by the number of environments, but we keep it that way for easier comparison with total environment steps
-            if tensorboard_writer is not None:
-                tensorboard_writer.add_scalar(f'Reward/Environment_{i}', cumulative_rewards[i], environment_step)
 
         # Train
         if environment_step >= training_pretrain_steps:
@@ -840,6 +854,15 @@ def train_loop(
             #     np.expand_dims(video_out.transpose(0, 1, 4, 2, 3), 0),
             #     environment_step,
             #     fps=fps)
+
+        # Checkpoint
+        if checkpoint_dir is not None and environment_step % checkpoint_frequency < envs.num_envs:
+            save_models(
+                path=os.path.join(checkpoint_dir, f'checkpoint_{environment_step:07d}.pt'),
+                world_model=world_model,
+                actor_critic_model=actor_critic_model,
+                utility_modules=utility_modules,
+            )
 
 
 @frl_utilities.optional_flatten_cfg(exceptions=[])

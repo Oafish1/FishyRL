@@ -1,0 +1,10 @@
+# 35k steps, 1.4h to >200 avg
+name: "LunarLander"
+
+# Environment configuration
+env:
+  num: 4
+  name: "LunarLander-v3"
+  actions:
+    - type: "Discrete"
+      num_options: 4

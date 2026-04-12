@@ -93,7 +93,12 @@ class MLPEncoder(nn.Module):
         :rtype: torch.Tensor
 
         """
+        # Cast to proper dtype
+        x = x.to(dtype=next(self.parameters()).dtype)
+
+        # Apply symlog transformation if specified
         x = frl_distributions.symlog(x) if self._use_symlog else x
+
         return self._model(x)
 
 class MLPDecoder(nn.Module):
@@ -215,6 +220,7 @@ class CNNEncoder(nn.Module):
         :rtype: torch.Tensor
 
         """
+        # TODO: Add casting and conversion
         # NOTE: Difference here with SheepRL, where batch dims are flattened during forward
         return self._model(x)
 

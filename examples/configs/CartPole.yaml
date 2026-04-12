@@ -1,0 +1,10 @@
+# 23k steps, 1.6h to 500 avg
+name: "CartPole"
+
+# Environment configuration
+env:
+  num: 4
+  name: "CartPole-v1"
+  actions:
+    - type: "Discrete"
+      num_options: 2

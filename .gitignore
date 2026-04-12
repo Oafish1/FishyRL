@@ -13,3 +13,6 @@ __pycache__/
 
 # Tensorboard logs
 examples/runs/
+
+# Notebook exports
+examples/Dreamer.py
