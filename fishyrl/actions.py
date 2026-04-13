@@ -4,6 +4,7 @@ import enum
 from abc import abstractmethod
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 from . import distributions as frl_distributions
@@ -273,7 +274,7 @@ class DiscreteAction(Action):
 
         # Cast to long and convert to one-hot
         action = action.long()
-        return nn.functional.one_hot(action.squeeze(-1), num_classes=self._num_options).to(torch.get_default_dtype())
+        return F.one_hot(action.squeeze(-1), num_classes=self._num_options).to(torch.get_default_dtype())
 
     def sample(self, logits: torch.Tensor) -> tuple[torch.Tensor, torch.distributions.Distribution]:
         """Sample logits using ``OneHotCategoricalStraightThrough``.
@@ -344,7 +345,7 @@ class TwoHotDiscretizedContinuousAction(Action):
         :type: int
 
         """
-        return 1
+        return self._bins
 
     @property
     def num_actions(self) -> int:
@@ -356,24 +357,52 @@ class TwoHotDiscretizedContinuousAction(Action):
         return 1
 
     def simplify(self, x: torch.Tensor) -> torch.Tensor:
-        """Simplify each action to a single value. Is a no-op for discretized continuous actions.
+        """Simplify each action to a single value. Involves computing a weighted sum of bin values.
 
         :param x: The action(s) of shape (batch_dim, output_dim).
         :type x: torch.Tensor
-        :return: The input tensor ``x``.
+        :return: Simplified action(s) of shape (batch_dim, num_actions).
         :rtype: torch.Tensor
         """
-        return x
+        bins = torch.linspace(self._low, self._high, self._bins, device=x.device)
+        val = (x * bins).sum(dim=-1, keepdim=True)
+        return self._post_func(val)
 
     def construct(self, action: torch.Tensor) -> torch.Tensor:
-        """Construct the full action from the simplified action. Is a no-op for discretized continuous actions.
+        """Construct the full action from the simplified action.
 
-        :param action: The simplified action of shape (batch_dim, output_dim).
+        :param action: The simplified action of shape (batch_dim, num_actions).
         :type action: torch.Tensor
-        :return: The input tensor ``action``.
+        :return: The constructed action of shape (batch_dim, output_dim).
         :rtype: torch.Tensor
         """
-        return action
+        # Apply pre-function to action
+        action = self._pre_func(action)
+
+        # Construct two-hot encoding
+        bins = torch.linspace(self._low, self._high, self._bins, device=action.device)
+        right_bins = torch.bucketize(action.squeeze(-1).contiguous(), bins)
+        left_bins = right_bins - 1
+
+        # Clamp bin indices to valid range
+        right_bins = torch.clamp(right_bins, 0, self._bins - 1)
+        left_bins = torch.clamp(left_bins, 0, self._bins - 1)
+
+        # Compute distances to left and right bins
+        right_bin_values = bins[right_bins]
+        left_bin_values = bins[left_bins]
+        right_distances = torch.clamp(right_bin_values - action.squeeze(-1), min=0)
+        left_distances = torch.clamp(action.squeeze(-1) - left_bin_values, min=0)
+        total_distances = right_distances + left_distances + self._eps
+        right_weights = left_distances / total_distances
+        left_weights = right_distances / total_distances
+
+        # Construct two-hot encoding
+        two_hot = (
+            F.one_hot(left_bins, num_classes=self._bins) * left_weights.unsqueeze(-1)
+            + F.one_hot(right_bins, num_classes=self._bins) * right_weights.unsqueeze(-1))
+
+        return two_hot
 
     def sample(self, logits: torch.Tensor) -> tuple[torch.Tensor, frl_distributions.TwoHot]:
         """Sample logits using a two-hot encoding.
@@ -387,13 +416,14 @@ class TwoHotDiscretizedContinuousAction(Action):
         """
         # Create and sample from distribution
         dist = frl_distributions.TwoHot(
-            logits=frl_distributions.uniform_mix(logits.unsqueeze(-2))[0],  # Add output_dim dimension
-            # bins=self._bins,
+            logits=frl_distributions.uniform_mix(logits)[0],
+            # bins=self._bins,  # Auto-detected
             low=self._low,
             high=self._high,
             pre_func=self._pre_func,
             post_func=self._post_func,
-            event_dims=2,  # Last two dimensions are event dimensions (bins and output_dim)
+            event_dims=1,
+            tensor_log_prob=True,
             eps=self._eps)
 
         return dist.rsample(), dist
@@ -500,7 +530,7 @@ class DiscretizedContinuousAction(Action):
         indices = torch.bucketize(action.squeeze(-1).contiguous(), self._bin_values)  # Will sometimes warn about input tensor being non-contiguous
 
         # Convert to one-hot encoding
-        return nn.functional.one_hot(indices, num_classes=self._bins).to(torch.get_default_dtype())
+        return F.one_hot(indices, num_classes=self._bins).to(torch.get_default_dtype())
 
     def sample(self, logits: torch.Tensor) -> tuple[torch.Tensor, torch.distributions.Distribution]:
         """Sample logits using a one-hot encoding.
@@ -515,6 +545,7 @@ class DiscretizedContinuousAction(Action):
         # Create and sample from distribution
         dist = torch.distributions.OneHotCategoricalStraightThrough(
             logits=frl_distributions.uniform_mix(logits)[0])
+
         return dist.rsample(), dist
 
 

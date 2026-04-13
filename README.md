@@ -1,27 +1,26 @@
-# Fishy RL
+# Extending the applicability of world modeling with DreamerX
 
-![Documentation](https://github.com/Oafish1/FishyRL/actions/workflows/build-docs.yml/badge.svg)
+![Documentation](https://github.com/Oafish1/DreamerX/actions/workflows/build-docs.yml/badge.svg)
 
-**Fishy RL** is a distributed reinforcement learning framework for model-based algorithms and Dreamer-V3. It is designed to be *flexible* and *user-friendly*, allowing researchers and practitioners to easily interchange components and environments. Please check out the [documentation](https://oafish1.github.io/FishyRL/) to get started.
+**DreamerX** is an implementation of model-based DreamerV3 with minor optimizations and novel training adjustments. DreamerX learns a compact latent representation of environment dynamics and estimates transitions based on sequential actions. This is known as the world model. Then, the actor-critic trains exclusively on *imagined* latent states from the world model, allowing learning using inferred dynamics through backpropagation using the world model weights.
+
+The library is designed to be *flexible* and *user-friendly*, allowing researchers and practitioners to easily swap in custom environments, architectural variants, or benchmark new implementations against a validated baseline. DreamerX has been tested using Gymnasium and MuJoCo environments, and is constantly expanding to include more environments and techniques. Please check out the [documentation](https://oafish1.github.io/DreamerX/) to get started.
+
+> [!NOTE]
+> This repository is in active development. Please check back later for more information, features, and examples.
+
+## Features
+
+- **Explainable Code**: The flow, sections, and logic of the training process and individual components are well-documented with references to relevant source material.
+- **Modular Design**: Model components, distributions, and losses are easily interchangable with easy-to-understand and documented interfaces for custom implementations.
+- **Novel Optimizations**: Minor optimizations and novel discretization strategies, including two hot discretization, are available, with more coming soon.
+- **Detailed Logging**: Logging, checkpointing, and evaluation are available out of the box with [pre-assembled configuration files](./examples/configs/) readily available.
+- **Gymnasium API Support**: DreamerX is broadly applicable to environments complying to the Gymnasium API, with optional rendering support.
+
+## Trained examples
 
 <table>
     <tbody>
-        <!-- Hopper -->
-        <tr bgcolor="#2b2b68">
-            <td colspan=4 style="text-align: center"><b>MuJoCo Hopper-v5</b></td>
-        </tr>
-        <tr>
-            <td style="text-align: center">10K Steps</td>
-            <td style="text-align: center">50K Steps</td>
-            <td style="text-align: center">100K Steps</td>
-            <td style="text-align: center">200K Steps</td>
-        </tr>
-        <tr>
-            <td style="text-align: center"><img src="./examples/images/Hopper_10k.gif" width="100%" alt="Trained Dreamer-V3 agent after 10k steps on MuJoCo Hopper-v5 environment"></td>
-            <td style="text-align: center"><img src="./examples/images/Hopper_50k.gif" width="100%" alt="Trained Dreamer-V3 agent after 50k steps on MuJoCo Hopper-v5 environment"></td>
-            <td style="text-align: center"><img src="./examples/images/Hopper_100k.gif" width="100%" alt="Trained Dreamer-V3 agent after 100k steps on MuJoCo Hopper-v5 environment"></td>
-            <td style="text-align: center"><img src="./examples/images/Hopper_200k.gif" width="100%" alt="Trained Dreamer-V3 agent after 200k steps on MuJoCo Hopper-v5 environment"></td>
-        </tr>
         <!-- Ant -->
         <tr bgcolor="#2b2b68">
             <td colspan=4 style="text-align: center"><b>MuJoCo Ant-v5</b></td>
@@ -37,6 +36,22 @@
             <td style="text-align: center"><img src="./examples/images/Ant_50k.gif" width="100%" alt="Trained Dreamer-V3 agent after 50k steps on MuJoCo Ant-v5 environment"></td>
             <td style="text-align: center"><img src="./examples/images/Ant_100k.gif" width="100%" alt="Trained Dreamer-V3 agent after 100k steps on MuJoCo Ant-v5 environment"></td>
             <td style="text-align: center"><img src="./examples/images/Ant_200k.gif" width="100%" alt="Trained Dreamer-V3 agent after 200k steps on MuJoCo Ant-v5 environment"></td>
+        </tr>
+        <!-- Hopper -->
+        <tr bgcolor="#2b2b68">
+            <td colspan=4 style="text-align: center"><b>MuJoCo Hopper-v5</b></td>
+        </tr>
+        <tr>
+            <td style="text-align: center">10K Steps</td>
+            <td style="text-align: center">50K Steps</td>
+            <td style="text-align: center">100K Steps</td>
+            <td style="text-align: center">200K Steps</td>
+        </tr>
+        <tr>
+            <td style="text-align: center"><img src="./examples/images/Hopper_10k.gif" width="100%" alt="Trained Dreamer-V3 agent after 10k steps on MuJoCo Hopper-v5 environment"></td>
+            <td style="text-align: center"><img src="./examples/images/Hopper_50k.gif" width="100%" alt="Trained Dreamer-V3 agent after 50k steps on MuJoCo Hopper-v5 environment"></td>
+            <td style="text-align: center"><img src="./examples/images/Hopper_100k.gif" width="100%" alt="Trained Dreamer-V3 agent after 100k steps on MuJoCo Hopper-v5 environment"></td>
+            <td style="text-align: center"><img src="./examples/images/Hopper_200k.gif" width="100%" alt="Trained Dreamer-V3 agent after 200k steps on MuJoCo Hopper-v5 environment"></td>
         </tr>
         <!-- BipedalWalker -->
         <tr bgcolor="#2b2b68">
@@ -93,5 +108,22 @@
 | :---: | :---: |
 | <img src="./examples/CartPole.gif" width="200" alt="Trained Dreamer-V3 agent on CartPole-v1 environment"> | <img src="./examples/CartPole.gif" width="200" alt="Trained Dreamer-V3 agent on LunarLander-v3 environment"> | -->
 
-> [!WARNING]
-> This repository is still under construction. Please check back later for more information, features, and examples.
+## Installation
+
+To install the library, first clone the repository
+```bash
+git clone https://github.com/Oafish1/DreamerX
+cd DreamerX
+```
+
+Then, install DreamerX and dependencies
+```bash
+make install  # Only install necessary libraries, equivalent to `pip install -e .`
+make install-dev  # Also install optional libraries, equivalent to `pip install -e .[dev,gym,extras]`
+```
+
+## Usage
+
+
+
+Please see the [`Dreamer` notebook](./examples/Dreamer.ipynb) in the examples folder for usage examples. A quick-start tutorial will be available shortly. In the meantime, please refer to the [documentation](https://oafish1.github.io/DreamerX/) and don't hesitate to post an issue if you have any questions or concerns.

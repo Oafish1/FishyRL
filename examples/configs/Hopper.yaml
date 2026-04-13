@@ -7,21 +7,25 @@ env:
   name: "Hopper-v5"
   actions:
     - type: "Discretized_Continuous"
-      bins: 5
+      bins: 7
     - type: "Discretized_Continuous"
-      bins: 5
+      bins: 7
     - type: "Discretized_Continuous"
-      bins: 5
+      bins: 7
     # - type: "Continuous"
     #   num_actions: 4
     #   clip: 1.0
 
+# Replay adjustments
+replay:
+  ratio: 1  # 32 from original
+
 # Training adjustments
 training:
   # Sample dimensions
-  batch_size: 64
-  sequence_length: 16
+  batch_size: 16
+  sequence_length: 64
   imagination_horizon: 15
 
   # Timesteps and frequency
-  pretrain_steps: 1024
+  pretrain_steps: 1024  # Batch size * sequence len from original

@@ -1,3 +1,10 @@
+# 0.15.1
+- Add more details to `README`
+- Add `tensor_log_prob` argument to `distributions.TwoHot`
+- Allow custom folder naming in `Dreamer` notebook
+- Iterate implementation of upon `TwoHotDiscretizedContinuous`
+- Rename library to `DreamerX`
+
 # 0.15.0
 - Add checkpoint resume to notebook
 - Add environment start state
