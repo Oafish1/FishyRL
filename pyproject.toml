@@ -1,11 +1,12 @@
 [project]
 name = "fishyrl"
-version = "0.17.0"
+version = "0.18.0"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "numpy",
     "pyyaml",  # For cfg
+    "scipy",  # For Hungarian loss
     "torch",
 ]
 
@@ -23,6 +24,9 @@ gym = [
 rlgym = [
     'rlgym[rl-rlviser]',  # Uses numpy 1.26.4 with [all]
 ]
+# headless = [
+#     "pyvirtualdisplay",  # For headless rendering in rlgym
+# ]
 extras = [
     "imageio",  # For saving evaluation videos as gifs
     # "moviepy==1.0.3",  # For recording videos in evaluation

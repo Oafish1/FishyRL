@@ -6,7 +6,7 @@ install:
 # Install development
 .PHONY: install-dev
 install-dev:
-	pip install -e .[dev,gym,extras]
+	pip install -e .[dev,gym,rlgym,extras]
 
 # Build
 .PHONY: build

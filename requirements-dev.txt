@@ -123,6 +123,7 @@ numpy==1.26.4
     #   mujoco
     #   rlgym-rocket-league
     #   rocketsim
+    #   scipy
     #   tensorboard
     #   tensorflow
 nvidia-cublas-cu12==12.8.4.1
@@ -232,6 +233,8 @@ rocketsim==2.2.0
 roman-numerals==4.1.0
     # via sphinx
 ruff==0.15.7
+    # via fishyrl (pyproject.toml)
+scipy==1.17.1
     # via fishyrl (pyproject.toml)
 six==1.17.0
     # via

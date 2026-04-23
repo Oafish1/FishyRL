@@ -19,8 +19,9 @@ from . import utilities as frl_utilities
 # Try importing tensorboard
 try:
     import torch.utils.tensorboard
+    tensorboard_SummaryWriter_cls = torch.utils.tensorboard.SummaryWriter
 except ImportError:
-    torch.utils.tensorboard = None
+    tensorboard_SummaryWriter_cls = None
 
 
 @frl_utilities.optional_flatten_cfg(exceptions=[])
@@ -91,9 +92,10 @@ def construct_actions(
 @frl_utilities.optional_flatten_cfg(exceptions=[])
 def construct_models(
     # Environment parameters
-    env_obs_dim: int,
     env_actions: list[frl_actions.Action],
     env_num: int,
+    # Model embedding parameters
+    model_embedding: list[dict[str, Any]] = [],
     # Model hidden parameters
     model_global_embedded: int = 1024,
     model_global_blocks: int = 5,
@@ -129,12 +131,13 @@ def construct_models(
 
     Can optionally take a configuration dictionary with argument ``cfg``.
 
-    :param env_obs_dim: The dimension of the environment observations.
-    :type env_obs_dim: int
     :param env_actions: A list of actions for the environment.
     :type env_actions: list[frl_actions.Action]
     :param env_num: The number of parallel environments. (Default: ``1``)
     :type env_num: int
+    :param model_embedding: A list of parameters defining the encoding inputs for the model. For more
+        details, see the documentation for ``CompoundEncoder``. (Default: ``[]``)
+    :type model_embedding: list[dict[str, Any]]
     :param model_global_embedded: The dimension of the embedded observation space. (Default: ``1024``)
     :type model_global_embedded: int
     :param model_global_blocks: The number of blocks in the MLP models. (Default: ``5``)
@@ -184,12 +187,14 @@ def construct_models(
 
     # Encoder-decoder models
     # NOTE: This uses `model_global_embedded` for all encoder and decoder dims, as in the original implementation
-    encoder_model = frl_models.MLPEncoder(env_obs_dim, model_global_embedded, num_blocks=model_global_blocks, hidden_dim=model_global_embedded).to(device)
-    decoder_model = frl_models.MLPDecoder(model_global_stochastic_dim * model_global_categorical_bins + model_global_deterministic_dim, env_obs_dim, num_blocks=model_global_blocks, hidden_dim=model_global_embedded).to(device)
+    # encoder_model = frl_models.MLPEncoder(env_obs_dim, model_global_embedded, num_blocks=model_global_blocks, hidden_dim=model_global_embedded).to(device)
+    # decoder_model = frl_models.MLPDecoder(model_global_stochastic_dim * model_global_categorical_bins + model_global_deterministic_dim, env_obs_dim, num_blocks=model_global_blocks, hidden_dim=model_global_embedded).to(device)
+    encoder_model = frl_models.CompoundEncoder(*model_embedding, output_dim=model_global_embedded, num_blocks=model_global_blocks, hidden_dim=model_global_embedded).to(device)
+    decoder_model = frl_models.CompoundDecoder(*model_embedding, input_dim=model_global_stochastic_dim * model_global_categorical_bins + model_global_deterministic_dim, num_blocks=model_global_blocks, hidden_dim=model_global_embedded).to(device)
 
     # RSSM models
     recurrent_model = frl_models.RecurrentModel(model_global_stochastic_dim * model_global_categorical_bins + action_dim, model_global_deterministic_dim).to(device)
-    representation_model = frl_models.MLP(model_global_embedded + model_global_deterministic_dim, model_global_stochastic_dim * model_global_categorical_bins).to(device)
+    representation_model = frl_models.MLP(encoder_model.output_dim + model_global_deterministic_dim, model_global_stochastic_dim * model_global_categorical_bins).to(device)
     transition_model = frl_models.MLP(model_global_deterministic_dim, model_global_stochastic_dim * model_global_categorical_bins).to(device)
     rssm_model = frl_models.RSSM(recurrent_model, representation_model, transition_model, model_global_categorical_bins, learnable_initial_state=model_world_learnable_initial_state).to(device)
 
@@ -208,7 +213,12 @@ def construct_models(
     rssm_model._representation_model._model[-1].apply(frl_utilities.uniform_init_weights(1.))
     reward_model._model[-1].apply(frl_utilities.uniform_init_weights(0.))
     continue_model._model[-1].apply(frl_utilities.uniform_init_weights(1.))
-    decoder_model._model._model[-1].apply(frl_utilities.uniform_init_weights(1.))
+    for model in decoder_model._decoders:
+        if isinstance(model, frl_models.MLPDecoder) or isinstance(model, frl_models.CNNDecoder):
+            model._model._model[-1].apply(frl_utilities.uniform_init_weights(1.))
+        elif isinstance(model, frl_models.AttentionDecoder):
+            model._output_heads.apply(frl_utilities.uniform_init_weights(1.))
+            model._existence_heads.apply(frl_utilities.uniform_init_weights(1.))
 
     # Create target critic model as a copy of critic model, with `requires_grad` set to False
     target_critic_model = copy.deepcopy(critic_model)
@@ -353,7 +363,7 @@ def learning_step(
     world_model: frl_utilities.ContainerModule,
     actor_critic_model: frl_utilities.ContainerModule,
     utility_modules: frl_utilities.Container,
-    tensorboard_writer: torch.utils.tensorboard.SummaryWriter = None,
+    tensorboard_writer: tensorboard_SummaryWriter_cls = None,
     environment_step: int = -1,
     # Training parameters
     training_imagination_horizon: int = 15,
@@ -408,7 +418,8 @@ def learning_step(
     categorical_bins = world_model.rssm_model._bins
 
     # Embed observations
-    embedded_obs = world_model.encoder_model(batch['obs'])
+    extracted_obs = frl_models.extract_representation(batch['obs'], world_model.encoder_model._encoder_specs)  # Format the observations into specified segments
+    embedded_obs = world_model.encoder_model(extracted_obs)
 
     # Initialize storage
     hidden_states = []
@@ -450,9 +461,47 @@ def learning_step(
     # NOTE: Interestingly, the model in the original implementation does not predict symlog observations, but predicts observations in the natural space,
     #       despite the encoder taking symlog observations
     # observation_loss = frl.losses.mse_loss(pred_obs, XXX, dims=2)  # CNN, TODO: Detect
-    observation_loss = frl_losses.mse_loss(frl_distributions.symlog(pred_obs), frl_distributions.symlog(batch['obs'])).clip(min=1e-8)  # MLP
+    # observation_loss = frl_losses.mse_loss(frl_distributions.symlog(pred_obs), frl_distributions.symlog(batch['obs'])).clip(min=1e-8)  # MLP
     # Bugfix here for symlog on `pred_obs`, April 11, 2026, 4:10 AM
-    # TODO: The clip here is not in jax, apparently
+
+    # Custom reconstruction losses for CNN, MLP, and attention
+    mlp_observation_loss = cnn_observation_loss = attention_reconstruction_loss = attention_existence_loss = 0
+    target_obs = frl_models.extract_representation(batch['obs'], world_model.decoder_model._decoder_specs)  # Format the observations into specified segments
+    for pred_obs_segment, target_obs_segment, decoder_spec in zip(pred_obs, target_obs, world_model.decoder_model._decoder_specs):
+        # MLP case
+        if decoder_spec['type'].upper() == 'MLP':
+            # TODO: The clip here is not in jax, apparently, but it is in SheepRL
+            mlp_observation_loss = mlp_observation_loss + frl_losses.mse_loss(
+                frl_distributions.symlog(pred_obs_segment), frl_distributions.symlog(target_obs_segment)).clip(min=1e-8)
+
+        # CNN case
+        elif decoder_spec['type'].upper() == 'CNN':
+            cnn_observation_loss = cnn_observation_loss + frl_losses.mse_loss(pred_obs_segment, target_obs_segment, dims=3)
+
+        # Attention case (Novel)
+        elif decoder_spec['type'].upper() == 'ATTENTION':
+            # Loop through all segments/entity types and sum reconstruction losses
+            # NOTE: This weighs all entity types equally, which may not be ideal
+            segment_reconstruction_loss = segment_existence_loss = 0
+            entities_pred_list, existence_logits_list = pred_obs_segment
+            for entities_pred, existence_logits, entities_target in zip(entities_pred_list, existence_logits_list, target_obs_segment):
+                subsegment_reconstruction_loss, subsegment_existence_loss = frl_losses.attention_reconstruction_loss(
+                    frl_distributions.symlog(entities_pred),
+                    frl_distributions.symlog(entities_target),
+                    existence_logits)
+                segment_reconstruction_loss = segment_reconstruction_loss + subsegment_reconstruction_loss
+                segment_existence_loss = segment_existence_loss + subsegment_existence_loss
+
+            # Record
+            attention_reconstruction_loss = attention_reconstruction_loss + segment_reconstruction_loss
+            attention_existence_loss = attention_existence_loss + segment_existence_loss
+
+        # Unsupported decoder spec type
+        else:
+            raise ValueError(f'Unsupported decoder spec type, "{decoder_spec['type']}", must be one of "MLP", "CNN", or "ATTENTION".')
+
+    # Record
+    observation_loss = mlp_observation_loss + cnn_observation_loss + attention_reconstruction_loss + attention_existence_loss
 
     # Compute reward loss (pr)
     dist_pred_rewards = frl_distributions.TwoHot(pred_rewards)  # NOTE: Default reward range is -20, 20 before symexp
@@ -492,6 +541,13 @@ def learning_step(
     if tensorboard_writer is not None:
         tensorboard_writer.add_scalar('Loss/World', reconstruction_loss.item(), environment_step)
         tensorboard_writer.add_scalar('World/Observation', observation_loss.mean().item(), environment_step)
+        if isinstance(mlp_observation_loss, torch.Tensor):
+            tensorboard_writer.add_scalar('Observation/MLP', mlp_observation_loss.mean().item(), environment_step)
+        if isinstance(cnn_observation_loss, torch.Tensor):
+            tensorboard_writer.add_scalar('Observation/CNN', cnn_observation_loss.mean().item(), environment_step)
+        if isinstance(attention_reconstruction_loss, torch.Tensor):
+            tensorboard_writer.add_scalar('Observation/Attention_Reconstruction', attention_reconstruction_loss.mean().item(), environment_step)
+            tensorboard_writer.add_scalar('Observation/Attention_Existence', attention_existence_loss.mean().item(), environment_step)
         tensorboard_writer.add_scalar('World/Reward', reward_loss.mean().item(), environment_step)
         tensorboard_writer.add_scalar('World/Continue', continue_loss.mean().item(), environment_step)
         tensorboard_writer.add_scalar('World/Dynamic', dynamic_loss.mean().item(), environment_step)
@@ -671,7 +727,8 @@ def compute_actions(
 
     # Embed observation
     if obs is not None:
-        embedded_obs = world_model.encoder_model(obs)
+        extracted_obs = frl_models.extract_representation(obs, world_model.encoder_model._encoder_specs)
+        embedded_obs = world_model.encoder_model(extracted_obs)
 
     # Compute hidden states
     world_model_out = world_model.rssm_model(
@@ -709,14 +766,13 @@ def train_loop(
     world_model: frl_utilities.ContainerModule,
     actor_critic_model: frl_utilities.ContainerModule,
     utility_modules: frl_utilities.Container,
-    tensorboard_writer: torch.utils.tensorboard.SummaryWriter = None,
+    tensorboard_writer: tensorboard_SummaryWriter_cls = None,
     # Loaded model parameters
     start_environment_step: int = 0,
     # Checkpointing parameters
     checkpoint_dir: str = None,
     checkpoint_frequency: int = 5_000,
     # Evaluation parameters
-    env_name: str = None,
     eval_frequency: int = 10**3,
     # Training parameters
     training_steps: int = 10**6,
@@ -725,6 +781,9 @@ def train_loop(
     training_batch_size: int = 16,
     training_sequence_length: int = 64,
     training_tau: float = 0.02,
+    # Initialization parameters
+    seed: int = None,
+    eval_seed: int = 42,
     **kwargs: dict[str, Any],
 ) -> None:
     """Train the Dreamer agent in the given environment.
@@ -763,6 +822,10 @@ def train_loop(
     :type training_sequence_length: int
     :param training_tau: The tau parameter for soft updates of the target critic. (Default: ``0.02``)
     :type training_tau: float
+    :param seed: The random seed for reproducibility. (Default: ``None``)
+    :type seed: int
+    :param eval_seed: The random seed for evaluation. (Default: ``42``)
+    :type eval_seed: int
     :param kwargs: Catch keyword arguments for compatibility with ``utilities.optional_flatten_cfg``.
     :type kwargs: dict[str, Any]
 
@@ -780,7 +843,7 @@ def train_loop(
     cumulative_episodes = 0
 
     # Loop for specified number of iterations
-    obs, info = envs.reset(seed=42)
+    obs, info = envs.reset(seed=seed)
     obs = obs.astype(np.float32)
     for environment_step in range(start_environment_step + 1, training_steps + 1, envs.num_envs):
         # Compute an action using the model
@@ -861,27 +924,29 @@ def train_loop(
                     utility_modules=utility_modules,
                     tensorboard_writer=tensorboard_writer,
                     environment_step=environment_step,
-                    **kwargs,
-                )
+                    **kwargs)
 
                 # Iterate
                 cumulative_gradient_steps += 1
 
         # Evaluate
-        if environment_step % eval_frequency < envs.num_envs and tensorboard_writer is not None:
+        if (
+            eval_frequency
+            and environment_step % eval_frequency < envs.num_envs
+            and tensorboard_writer is not None
+        ):
             # Run evaluation episode
             frames, fps = evaluate(
                 env=envs.copy(num_envs=1, allow_rendering=True),
                 world_model=world_model,
                 actor_critic_model=actor_critic_model,
-            )
+                seed=eval_seed)
 
             # Output to gif
             frl_utilities.export_gif(
                 os.path.join(tensorboard_writer.get_logdir(), f'eval_{environment_step:07d}.gif'),
                 frames,
-                fps=fps,
-            )
+                fps=fps)
 
             # Log video to tensorboard (For some reason, causes permission error and is broken)
             # tensorboard_writer.add_video(  # (batch, time, channels, height, width)
@@ -896,8 +961,7 @@ def train_loop(
                 path=os.path.join(checkpoint_dir, f'checkpoint_{environment_step:07d}.pt'),
                 world_model=world_model,
                 actor_critic_model=actor_critic_model,
-                utility_modules=utility_modules,
-            )
+                utility_modules=utility_modules)
 
 
 @frl_utilities.optional_flatten_cfg(exceptions=[])

@@ -4,9 +4,20 @@ name: "Hopper"
 # Environment configuration
 env:
   num: 4
-  group: "gymnasium"
+  group: "Gymnasium"
   name: "Hopper-v5"
   actions:
     - type: "Discretized_Continuous"
-      bins: 7
+      bins: 9
       num: 3
+
+# Replay ratio
+replay:
+  ratio: 0.5
+
+# Model configuration
+model:
+  embedding:
+    - type: "MLP"
+      segments:
+        - range: [0, 11]

@@ -16,3 +16,8 @@ examples/runs/
 
 # Notebook exports
 examples/Dreamer.py
+
+# RLGym requirements
+examples/collision_meshes/
+examples/rlviser
+examples/settings.txt
