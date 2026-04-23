@@ -1,11 +1,19 @@
 # 0.18.0
+- Add automatic resetting to `VectorizedRLGymEnvironment`
 - Add arguments to `CNNEncoder` and `CNNDecoder` to accomodate differing image sizes
+- Add `environments.CloseReward` for closeness of car and ball in `RLGym` environments, with additional `use_diff` configuration parameter
 - Add `models.AttentionEncoder` and `models.AttentionDecoder` models
 - Add `models.CompoundEncoder` and `models.CompoundDecoder` models for combining CNN, MLP, and attention observations with utility function `models.extract_representation`
+- Add new losses from segmented encoding to tensorboard
 - Add `output_dim` property to all encoders
+- Begin training on `RLGym` environment
+- Compatibility with new model architectures
 - Fix `tensorboard` dependency typing issue when not installed
 - Fix training and evaluation environment seeding
 - Formalize `VectorizedRLGymEnvironment` implementation in `environments` module
+- Implement `losses.hungarian_loss` and `losses.attention_reconstruction_loss` for attention decoder losses
+- Implement CNN and novel attention loss in `dreamer.learning_step` function
+- `README` updates for transformer architecture
 - Replace single encoder with compound encoder throughout `dreamer` module and training loop
 
 # 0.17.0

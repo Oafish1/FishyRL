@@ -323,6 +323,9 @@ class AttentionEncoder(nn.Module):
         """
         super().__init__()
 
+        # Parameters
+        self._hidden_dim = hidden_dim
+
         # Default parameters
         num_heads = num_blocks if num_heads is None else num_heads
 
@@ -331,13 +334,17 @@ class AttentionEncoder(nn.Module):
 
         # Initialize self attention blocks
         self.self_attention = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(hidden_dim, num_heads, dim_feedforward=hidden_dim),
-            num_layers=num_blocks,
-            activation='gelu')  # NOTE: We normally use SiLU everywhere else
+            nn.TransformerEncoderLayer(
+                hidden_dim,
+                num_heads,
+                dim_feedforward=hidden_dim,
+                activation='gelu',
+                batch_first=True),  # NOTE: We normally use SiLU everywhere else
+            num_layers=num_blocks)
 
         # Initialize cross attention layer
         self._queries = nn.Parameter(torch.randn(num_queries, hidden_dim))
-        self._cross_attention = nn.MultiheadAttention(hidden_dim, num_heads, batch_first=True, need_weights=False)
+        self._cross_attention = nn.MultiheadAttention(hidden_dim, num_heads, batch_first=True)
 
     @property
     def output_dim(self) -> int:
@@ -346,30 +353,33 @@ class AttentionEncoder(nn.Module):
         :type: int
 
         """
-        return self._output_dim
+        return self._hidden_dim
 
     def forward(self, x: list[torch.Tensor]) -> torch.Tensor:
         """Perform a forward pass through the attention encoder.
 
-        :param x: A list of input tensors for each sequential observation, where each tensor has shape (batch_dim, seq_len, input_dim).
+        :param x: A list of input tensors for each sequential observation, where each tensor has shape (batch_dims, seq_len, input_dim).
         :type x: list[torch.Tensor]
-        :return: The output tensor of shape (batch_dim, num_queries * hidden_dim).
+        :return: The output tensor of shape (batch_dims, num_queries * hidden_dim).
         :rtype: torch.Tensor
 
         """
+        # Store batch dimensions and flatten
+        batch_dims = x[0].shape[:-2]
+        x = [xi.view(-1, *xi.shape[-2:]) for xi in x]
+
         # Process each input through its head
-        x = [input_head(x_i) for input_head, x_i in zip(self._input_heads, x)]
+        x = [input_head(xi) for input_head, xi in zip(self._input_heads, x)]
 
         # Concatenate inputs along sequence dimension and apply self attention
         x = torch.cat(x, dim=-2)
         x = self.self_attention(x)
 
         # Apply cross attention with learned queries
-        batch_dim = x.shape[:-2]
-        queries = self._queries.view(*[1 for _ in range(len(batch_dim))], *self._queries.shape).expand(*batch_dim, -1, -1)
-        out = self._cross_attention(queries, x, x)
+        queries = self._queries.view(1, *self._queries.shape).expand(*x.shape[:-2], -1, -1)
+        out, _ = self._cross_attention(queries, x, x, need_weights=False)
 
-        return out.view(*batch_dim, -1)
+        return out.view(*batch_dims, -1)
 
 
 class AttentionDecoder(nn.Module):
@@ -402,55 +412,67 @@ class AttentionDecoder(nn.Module):
         num_heads = num_blocks if num_heads is None else num_heads
         if isinstance(num_queries, int):
             num_queries = [num_queries] * len(output_dims)
+        self._num_queries = num_queries
 
         # Initialize input head
         self._input_head = nn.Linear(input_dim, hidden_dim)
 
         # Initialize cross attention layer
         self._queries = nn.Parameter(torch.randn(sum(num_queries), hidden_dim))
-        self._cross_attention = nn.MultiheadAttention(hidden_dim, num_heads, batch_first=True, need_weights=False)
+        self._cross_attention = nn.MultiheadAttention(hidden_dim, num_heads, batch_first=True)
 
         # Initialize self attention blocks
         self._self_attention = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(hidden_dim, num_heads, dim_feedforward=hidden_dim),
-            num_layers=num_blocks,
-            activation='gelu')
+            nn.TransformerEncoderLayer(
+                hidden_dim,
+                num_heads,
+                dim_feedforward=hidden_dim,
+                activation='gelu',
+                batch_first=True),
+            num_layers=num_blocks)
 
         # Initialize output heads and existence predictors
         self._output_heads = nn.ModuleList([nn.Linear(hidden_dim, output_dim) for output_dim in output_dims])
         self._existence_heads = nn.ModuleList([nn.Linear(hidden_dim, 1) for _ in output_dims])
 
-    def forward(self, x: torch.Tensor) -> list[torch.Tensor]:
+    def forward(self, x: torch.Tensor) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
         """Perform a forward pass through the attention decoder.
 
         :param x: The input tensor of shape (batch_dim, input_dim).
         :type x: torch.Tensor
-        :return: A list of output tensors for each sequential observation in the original dimension.
-        :rtype: list[torch.Tensor]
+        :return: A tuple containing a list of output tensors for each sequential observation in the original dimension
+            and a list of existence logits for each sequential observation.
+        :rtype: tuple[list[torch.Tensor], list[torch.Tensor]]
 
         """
+        # Store batch dimensions and flatten
+        batch_dims = x.shape[:-1]
+        x = x.view(-1, x.shape[-1])
+
         # Process input through input head and add sequence dimension for attention
         x = self._input_head(x).unsqueeze(-2)
 
         # Apply cross attention with learned queries
-        batch_dim = x.shape[:-2]
-        queries = self._queries.view(*[1 for _ in range(len(batch_dim))], *self._queries.shape).expand(*batch_dim, -1, -1)
-        x = self._cross_attention(queries, x, x)
+        queries = self._queries.view(1, *self._queries.shape).expand(*x.shape[:-2], -1, -1)
+        x, _ = self._cross_attention(queries, x, x, need_weights=False)
 
         # Apply self attention
         x = self._self_attention(x)
 
+        # Unflatten batch dimensions
+        x = x.view(*batch_dims, *x.shape[-2:])
+
         # Get output and existence predictions for each sequential observation
         outputs, existence_logits = [], []
         start_idx = 0
-        for output_head, existence_head, output_dim in zip(self._output_heads, self._existence_heads, self._output_dims):
+        for output_head, existence_head, num_queries in zip(self._output_heads, self._existence_heads, self._num_queries):
             # Subset input to the number of queries for this output
-            x_sub = x[:, start_idx : start_idx + output_dim]
-            start_idx += output_dim
+            x_sub = x[..., start_idx : start_idx + num_queries, :]
+            start_idx += num_queries
 
             # Record
             outputs.append(output_head(x_sub))
-            existence_logits.append(existence_head(x_sub))
+            existence_logits.append(existence_head(x_sub).squeeze(-1))
 
         return outputs, existence_logits
 
@@ -497,7 +519,7 @@ def extract_representation(x: torch.Tensor, specs: list[dict[str, Any]]) -> list
             extracted_segments = []
             for spec_segment in spec_segments:
                 # Filter to input range and reshape to (seq_len, feature_dim)
-                segment_len = spec_segment.get('segment_len', spec_segment.range[1] - spec_segment.range[0])
+                segment_len = spec_segment.segment_len if 'segment_len' in spec_segment else spec_segment.range[1] - spec_segment.range[0]
                 extracted_segment = x[..., spec_segment.range[0] : spec_segment.range[1]]
                 extracted_segment = extracted_segment.view(*extracted_segment.shape[:-1], -1, segment_len)
                 extracted_segments.append(extracted_segment)
@@ -599,17 +621,15 @@ class CompoundEncoder(nn.Module):
                 input_dims = []
                 for encoder_segment in encoder_segments:
                     # Get range, using each separate specification as another input MLP
-                    encoder_range = encoder_segment.get(
-                        'segment_len',  # Use segment length if provided
-                        encoder_segment.range[1] - encoder_segment.range[0])  # Otherwise, use whole range
+                    encoder_range = encoder_segment.segment_len if 'segment_len' in encoder_segment else encoder_segment.range[1] - encoder_segment.range[0]
                     input_dims.append(encoder_range)
 
                 # Initialize
                 encoder = AttentionEncoder(
                     input_dims=input_dims,
-                    output_dim=output_dim,
-                    num_blocks=num_blocks,
-                    hidden_dim=hidden_dim)
+                    # output_dim=output_dim,  # TODO: Maybe add a final linear transformation here
+                    hidden_dim=hidden_dim,
+                    num_blocks=num_blocks)
 
             # Otherwise, raise error
             else:
@@ -733,9 +753,8 @@ class CompoundDecoder(nn.Module):
                 output_dims, num_queries = [], []
                 for decoder_segment in decoder_segments:
                     # Get range, using each separate specification as another output MLP
-                    segment_len = decoder_segment.get(
-                        'segment_len',  # Use segment length if provided
-                        decoder_segment.range[1] - decoder_segment.range[0])  # Otherwise, use whole range
+                    # Use segment length if provided, otherwise infer from range
+                    segment_len = decoder_segment.segment_len if 'segment_len' in decoder_segment else decoder_segment.range[1] - decoder_segment.range[0]
                     max_segments = decoder_segment.get('max_segments', 1)
                     output_dims.append(segment_len)
                     num_queries.append(max_segments)
@@ -759,15 +778,16 @@ class CompoundDecoder(nn.Module):
         # Wrap in a module list
         self._decoders = nn.ModuleList(self._decoders)
 
-    def forward(self, x: torch.Tensor) -> list[torch.Tensor | list[torch.Tensor]]:
+    def forward(self, x: torch.Tensor) -> list[torch.Tensor | tuple[list[torch.Tensor], list[torch.Tensor]]]:
         """Perform a forward pass through the compound decoder, combining the outputs of each individual decoder.
 
         :param x: The input tensor of shape (batch_dim, input_dim).
         :type x: torch.Tensor
         :param reconstruct: Whether to reconstruct the output in its original format.
         :type reconstruct: bool
-        :return: A list of all reconstructed outputs.
-        :rtype: list[torch.Tensor | list[torch.Tensor]]
+        :return: A list of all reconstructed outputs, where MLP and CNN decoders return tensors, while attention decoders return a
+            tuple containing a list of output tensors and a list of existence logits for each sequential observation.
+        :rtype: list[torch.Tensor | tuple[list[torch.Tensor], list[torch.Tensor]]]
 
         """
         # Process each decoder and concatenate outputs

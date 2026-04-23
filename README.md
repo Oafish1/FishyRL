@@ -2,9 +2,9 @@
 
 ![Documentation](https://github.com/Oafish1/DreamerX/actions/workflows/build-docs.yml/badge.svg)
 
-**DreamerX** is an implementation of model-based DreamerV3 with minor optimizations and novel training adjustments. DreamerX learns a compact latent representation of environment dynamics and estimates transitions based on sequential actions. This is known as the world model. Then, the actor-critic trains exclusively on *imagined* latent states from the world model, allowing learning using inferred dynamics through backpropagation using the world model weights.
+**DreamerX** is an implementation of model-based DreamerV3 with additions for transformer-based observation encoding and decoding, novel training adjustments and discretization strategies, and minor optimizations. DreamerX learns a compact latent representation of environment dynamics and estimates transitions based on sequential actions. This is known as the world model. Then, the actor-critic trains exclusively on *imagined* latent states from the world model, allowing learning using inferred dynamics through backpropagation using the world model weights.
 
-The library is designed to be *flexible* and *user-friendly*, allowing researchers and practitioners to easily swap in custom environments, architectural variants, or benchmark new implementations against a validated baseline. DreamerX has been tested using Gymnasium and MuJoCo environments, and is constantly expanding to include more environments and techniques. Please check out the [documentation](https://oafish1.github.io/DreamerX/) to get started.
+The library is designed to be *flexible* and *user-friendly*, allowing researchers and practitioners to easily swap in custom environments, architectural variants, or benchmark new implementations against a validated baseline. DreamerX has been tested using [Gymnasium](https://gymnasium.farama.org/) and [MuJoCo](https://gymnasium.farama.org/environments/mujoco/) environments, is currently being tested using [RLGym](https://rlgym.org/), and is constantly expanding to include more environments and techniques. Please check out the [documentation](https://oafish1.github.io/DreamerX/) to get started.
 
 > [!NOTE]
 > This repository is in active development. Please check back later for more information, features, and examples.
@@ -13,6 +13,7 @@ The library is designed to be *flexible* and *user-friendly*, allowing researche
 
 - **Explainable Code**: The flow, sections, and logic of the training process and individual components are well-documented with references to relevant source material.
 - **Modular Design**: Model components, distributions, and losses are easily interchangable with easy-to-understand and documented interfaces for custom implementations.
+- **Transformer Encoder-Decoder**: Transformer-based attention encoders and decoders are used to allow for variable-length observations
 - **Novel Optimizations**: Minor optimizations and novel discretization strategies, including two hot discretization, are available, with more coming soon.
 - **Detailed Logging**: Logging, checkpointing, and evaluation are available out of the box with [pre-assembled configuration files](./examples/configs/) readily available.
 - **Gymnasium API Support**: DreamerX is broadly applicable to environments complying to the Gymnasium API, with optional rendering support.

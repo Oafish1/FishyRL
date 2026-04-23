@@ -1,6 +1,9 @@
 # MuJoCo Humanoid
 name: "RLGym"
 
+training:
+  pretrain_steps: 1024
+
 # Environment configuration
 env:
   num: 4
@@ -8,7 +11,15 @@ env:
   name: "Soccar"
   actions:
     - type: "Discrete"
-      bins: 90
+      num_options: 90
+
+# Evaluation configuration
+eval:
+  frequency: 0  # Rendering not configured yet
+
+# Ratio configuration
+replay:
+  ratio: 0.1
 
 # Model configuration
 model:
@@ -18,7 +29,7 @@ model:
         - range: [0, 9]  # Ball observations
         # - range: [43, 72]  # Self car observations + input observations
         - range: [52, 72]  # Self car observations
-        - range: [72, None]  # Other car observations, ` indicates to go until the end of the observation
+        - range: [72, null]  # Other car observations, `null` indicates to go until the end of the observation
           segment_len: 20  # The range from 72 to the end is split into segments of length 20 for attention processing
           max_segments: 5  # Max number of possible segments to generate from the decoder
     - type: "MLP"

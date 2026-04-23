@@ -6,6 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "numpy",
     "pyyaml",  # For cfg
+    "scipy",  # For Hungarian loss
     "torch",
 ]
 

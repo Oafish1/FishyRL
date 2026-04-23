@@ -213,7 +213,12 @@ def construct_models(
     rssm_model._representation_model._model[-1].apply(frl_utilities.uniform_init_weights(1.))
     reward_model._model[-1].apply(frl_utilities.uniform_init_weights(0.))
     continue_model._model[-1].apply(frl_utilities.uniform_init_weights(1.))
-    decoder_model._model._model[-1].apply(frl_utilities.uniform_init_weights(1.))
+    for model in decoder_model._decoders:
+        if isinstance(model, frl_models.MLPDecoder) or isinstance(model, frl_models.CNNDecoder):
+            model._model._model[-1].apply(frl_utilities.uniform_init_weights(1.))
+        elif isinstance(model, frl_models.AttentionDecoder):
+            model._output_heads.apply(frl_utilities.uniform_init_weights(1.))
+            model._existence_heads.apply(frl_utilities.uniform_init_weights(1.))
 
     # Create target critic model as a copy of critic model, with `requires_grad` set to False
     target_critic_model = copy.deepcopy(critic_model)
@@ -413,7 +418,8 @@ def learning_step(
     categorical_bins = world_model.rssm_model._bins
 
     # Embed observations
-    embedded_obs = world_model.encoder_model(batch['obs'])
+    extracted_obs = frl_models.extract_representation(batch['obs'], world_model.encoder_model._encoder_specs)  # Format the observations into specified segments
+    embedded_obs = world_model.encoder_model(extracted_obs)
 
     # Initialize storage
     hidden_states = []
@@ -455,9 +461,47 @@ def learning_step(
     # NOTE: Interestingly, the model in the original implementation does not predict symlog observations, but predicts observations in the natural space,
     #       despite the encoder taking symlog observations
     # observation_loss = frl.losses.mse_loss(pred_obs, XXX, dims=2)  # CNN, TODO: Detect
-    observation_loss = frl_losses.mse_loss(frl_distributions.symlog(pred_obs), frl_distributions.symlog(batch['obs'])).clip(min=1e-8)  # MLP
+    # observation_loss = frl_losses.mse_loss(frl_distributions.symlog(pred_obs), frl_distributions.symlog(batch['obs'])).clip(min=1e-8)  # MLP
     # Bugfix here for symlog on `pred_obs`, April 11, 2026, 4:10 AM
-    # TODO: The clip here is not in jax, apparently
+
+    # Custom reconstruction losses for CNN, MLP, and attention
+    mlp_observation_loss = cnn_observation_loss = attention_reconstruction_loss = attention_existence_loss = 0
+    target_obs = frl_models.extract_representation(batch['obs'], world_model.decoder_model._decoder_specs)  # Format the observations into specified segments
+    for pred_obs_segment, target_obs_segment, decoder_spec in zip(pred_obs, target_obs, world_model.decoder_model._decoder_specs):
+        # MLP case
+        if decoder_spec['type'].upper() == 'MLP':
+            # TODO: The clip here is not in jax, apparently, but it is in SheepRL
+            mlp_observation_loss = mlp_observation_loss + frl_losses.mse_loss(
+                frl_distributions.symlog(pred_obs_segment), frl_distributions.symlog(target_obs_segment)).clip(min=1e-8)
+
+        # CNN case
+        elif decoder_spec['type'].upper() == 'CNN':
+            cnn_observation_loss = cnn_observation_loss + frl_losses.mse_loss(pred_obs_segment, target_obs_segment, dims=3)
+
+        # Attention case (Novel)
+        elif decoder_spec['type'].upper() == 'ATTENTION':
+            # Loop through all segments/entity types and sum reconstruction losses
+            # NOTE: This weighs all entity types equally, which may not be ideal
+            segment_reconstruction_loss = segment_existence_loss = 0
+            entities_pred_list, existence_logits_list = pred_obs_segment
+            for entities_pred, existence_logits, entities_target in zip(entities_pred_list, existence_logits_list, target_obs_segment):
+                subsegment_reconstruction_loss, subsegment_existence_loss = frl_losses.attention_reconstruction_loss(
+                    frl_distributions.symlog(entities_pred),
+                    frl_distributions.symlog(entities_target),
+                    existence_logits)
+                segment_reconstruction_loss = segment_reconstruction_loss + subsegment_reconstruction_loss
+                segment_existence_loss = segment_existence_loss + subsegment_existence_loss
+
+            # Record
+            attention_reconstruction_loss = attention_reconstruction_loss + segment_reconstruction_loss
+            attention_existence_loss = attention_existence_loss + segment_existence_loss
+
+        # Unsupported decoder spec type
+        else:
+            raise ValueError(f'Unsupported decoder spec type, "{decoder_spec['type']}", must be one of "MLP", "CNN", or "ATTENTION".')
+
+    # Record
+    observation_loss = mlp_observation_loss + cnn_observation_loss + attention_reconstruction_loss + attention_existence_loss
 
     # Compute reward loss (pr)
     dist_pred_rewards = frl_distributions.TwoHot(pred_rewards)  # NOTE: Default reward range is -20, 20 before symexp
@@ -497,6 +541,13 @@ def learning_step(
     if tensorboard_writer is not None:
         tensorboard_writer.add_scalar('Loss/World', reconstruction_loss.item(), environment_step)
         tensorboard_writer.add_scalar('World/Observation', observation_loss.mean().item(), environment_step)
+        if isinstance(mlp_observation_loss, torch.Tensor):
+            tensorboard_writer.add_scalar('Observation/MLP', mlp_observation_loss.mean().item(), environment_step)
+        if isinstance(cnn_observation_loss, torch.Tensor):
+            tensorboard_writer.add_scalar('Observation/CNN', cnn_observation_loss.mean().item(), environment_step)
+        if isinstance(attention_reconstruction_loss, torch.Tensor):
+            tensorboard_writer.add_scalar('Observation/Attention_Reconstruction', attention_reconstruction_loss.mean().item(), environment_step)
+            tensorboard_writer.add_scalar('Observation/Attention_Existence', attention_existence_loss.mean().item(), environment_step)
         tensorboard_writer.add_scalar('World/Reward', reward_loss.mean().item(), environment_step)
         tensorboard_writer.add_scalar('World/Continue', continue_loss.mean().item(), environment_step)
         tensorboard_writer.add_scalar('World/Dynamic', dynamic_loss.mean().item(), environment_step)
@@ -676,7 +727,8 @@ def compute_actions(
 
     # Embed observation
     if obs is not None:
-        embedded_obs = world_model.encoder_model(obs)
+        extracted_obs = frl_models.extract_representation(obs, world_model.encoder_model._encoder_specs)
+        embedded_obs = world_model.encoder_model(extracted_obs)
 
     # Compute hidden states
     world_model_out = world_model.rssm_model(
@@ -872,28 +924,29 @@ def train_loop(
                     utility_modules=utility_modules,
                     tensorboard_writer=tensorboard_writer,
                     environment_step=environment_step,
-                    **kwargs,
-                )
+                    **kwargs)
 
                 # Iterate
                 cumulative_gradient_steps += 1
 
         # Evaluate
-        if environment_step % eval_frequency < envs.num_envs and tensorboard_writer is not None:
+        if (
+            eval_frequency
+            and environment_step % eval_frequency < envs.num_envs
+            and tensorboard_writer is not None
+        ):
             # Run evaluation episode
             frames, fps = evaluate(
                 env=envs.copy(num_envs=1, allow_rendering=True),
                 world_model=world_model,
                 actor_critic_model=actor_critic_model,
-                seed=eval_seed,
-            )
+                seed=eval_seed)
 
             # Output to gif
             frl_utilities.export_gif(
                 os.path.join(tensorboard_writer.get_logdir(), f'eval_{environment_step:07d}.gif'),
                 frames,
-                fps=fps,
-            )
+                fps=fps)
 
             # Log video to tensorboard (For some reason, causes permission error and is broken)
             # tensorboard_writer.add_video(  # (batch, time, channels, height, width)
@@ -908,8 +961,7 @@ def train_loop(
                 path=os.path.join(checkpoint_dir, f'checkpoint_{environment_step:07d}.pt'),
                 world_model=world_model,
                 actor_critic_model=actor_critic_model,
-                utility_modules=utility_modules,
-            )
+                utility_modules=utility_modules)
 
 
 @frl_utilities.optional_flatten_cfg(exceptions=[])
