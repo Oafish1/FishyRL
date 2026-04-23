@@ -22,6 +22,34 @@ The library is designed to be *flexible* and *user-friendly*, allowing researche
 
 <table>
     <tbody>
+        <!-- RLGym Soccar -->
+        <!-- <tr bgcolor="#2b2b68">
+            <td colspan=4 style="text-align: center"><b>MuJoCo Walker2d-v5</b></td>
+        </tr>
+        <tr>
+            <td style="text-align: center">100K Steps</td>
+            <td style="text-align: center">200K Steps</td>
+            <td style="text-align: center">500K Steps</td>
+            <td style="text-align: center">1M Steps</td>
+        </tr>
+        <tr>
+            <td style="text-align: center">
+                <video controls width="100%" alt="Trained Dreamer-V3 agent after 100k steps on RLGym Soccar environment">
+                <source src="./examples/images/RLGym_10k.mp4" type="video/mp4">
+            </td>
+            <td style="text-align: center">
+                <video controls width="100%" alt="Trained Dreamer-V3 agent after 200k steps on RLGym Soccar environment">
+                <source src="./examples/images/RLGym_10k.mp4" type="video/mp4">
+            </td>
+            <td style="text-align: center">
+                <video controls width="100%" alt="Trained Dreamer-V3 agent after 500k steps on RLGym Soccar environment">
+                <source src="./examples/images/RLGym_10k.mp4" type="video/mp4">
+            </td>
+            <td style="text-align: center">
+                <video controls width="100%" alt="Trained Dreamer-V3 agent after 1m steps on RLGym Soccar environment">
+                <source src="./examples/images/RLGym_10k.mp4" type="video/mp4">
+            </td>
+        </tr> -->
         <!-- Walker2D -->
         <tr bgcolor="#2b2b68">
             <td colspan=4 style="text-align: center"><b>MuJoCo Walker2d-v5</b></td>

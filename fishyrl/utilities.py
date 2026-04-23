@@ -367,16 +367,17 @@ def _flatten_dict(
     return _result
 
 
-def export_gif(path: str, frames: np.ndarray, fps: int = 30, max_fps: int = 30, **kwargs: dict[str, Any]) -> None:
-    """Export a sequence of frames as a GIF.
+def export_frames(path: str, frames: np.ndarray, fps: int = 30, max_fps: int = None, **kwargs: dict[str, Any]) -> None:
+    """Export a sequence of frames to a GIF or video file.
 
-    :param path: The path of the resultant GIF.
+    :param path: The path of the resultant GIF or video file.
     :type path: str
     :param frames: The sequence of frames to export, as a numpy array of shape (time, height, width, channels).
     :type frames: np.ndarray
     :param fps: Frames per second. (Default: ``30``)
     :type fps: int
-    :param max_fps: The maximum frames per second to use when exporting the GIF. Will drop frames if needed. (Default: ``30``)
+    :param max_fps: The maximum frames per second to use when exporting. Will drop frames if needed. By default, will cut off at 30 if
+        the file is a GIF. (Default: ``None``)
     :type max_fps: int
     :param kwargs: Additional keyword arguments to pass to the imageio.mimsave function.
     :type kwargs: dict[str, Any]
@@ -385,12 +386,15 @@ def export_gif(path: str, frames: np.ndarray, fps: int = 30, max_fps: int = 30, 
     # Import if needed
     import imageio
 
-    # Get kwargs
-    new_kwargs = {'loop': 0}  # Default kwargs
+    # Default kwargs
+    new_kwargs = {}
+    if path.split('.')[-1].upper() == 'GIF':
+        max_fps = 30 if max_fps is None else max_fps
+        new_kwargs.update({'loop': 0})  # Default GIF kwargs
     new_kwargs.update(kwargs)
 
     # Drop frames if fps is greater than max_fps
-    if fps > max_fps:
+    if max_fps is not None and fps > max_fps:
         step = int(np.ceil(fps / max_fps))
         frames = frames[::step]
         fps = int(fps / step)

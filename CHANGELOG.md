@@ -1,3 +1,14 @@
+# 0.20.0
+- Add documentation for `VectorizedRLGymEnvironment` rendering
+- Add `rlgym.rewards` module, and move `CloseReward` for optional importing
+- Add video preview capabilities to `README`
+- Automatically close options menu in `RLViser` preview window
+- Fix `Sphinx` crawling for optional subpackages and submodules
+- Change checkpoint folder naming scheme
+- Instructions for installation and capture in `RLGym_Preview` notebook
+- Rename `utilities.export_gif` to `utilities.export_frames` and add compatibility for video formats
+- `RLGym` rendering and export capability on headless Linux
+
 # 0.19.0
 - Add preview for `VectorizedRLGymEnvironment` using `RLViser`
 - Correct start offset for multiple environments

@@ -6,19 +6,19 @@ install:
 # Install development
 .PHONY: install-dev
 install-dev:
-	pip install -e .[dev,gym,rlgym,extras]
+	pip install -e .[dev,gym,rlgym,headless,extras]
 
 # Build
 .PHONY: build
 build:
 	pip-compile --resolver=backtracking --output-file=requirements.txt pyproject.toml
-	pip-compile --resolver=backtracking --extra=dev,gym,rlgym,extras --output-file=requirements-dev.txt pyproject.toml
+	pip-compile --resolver=backtracking --extra=dev,gym,rlgym,headless,extras --output-file=requirements-dev.txt pyproject.toml
 
 # Build docs
 # NOTE: May require `rm -rf ./docs/source/api` even with --remove-old, but doesn't work on Windows when folder doesn't exist
 .PHONY: build-docs
 build-docs:
-	sphinx-apidoc --separate --remove-old -t ./docs/source/_templates -o ./docs/source/api ./fishyrl
+	sphinx-apidoc --implicit-namespaces --separate --remove-old -t ./docs/source/_templates -o ./docs/source/api ./fishyrl
 	make -C ./docs html
 
 # Run tests

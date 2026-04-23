@@ -943,7 +943,7 @@ def train_loop(
                 seed=eval_seed)
 
             # Output to gif
-            frl_utilities.export_gif(
+            frl_utilities.export_frames(
                 os.path.join(tensorboard_writer.get_logdir(), f'eval_{environment_step:07d}.gif'),
                 frames,
                 fps=fps)

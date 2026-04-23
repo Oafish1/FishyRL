@@ -1,6 +1,6 @@
 [project]
 name = "fishyrl"
-version = "0.19.0"
+version = "0.20.0"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -22,11 +22,15 @@ gym = [
     "gymnasium[classic_control,box2d,mujoco]",  # Make sure to install OpenGL for MuJoCo
 ]
 rlgym = [
-    'rlgym[rl-rlviser]',  # Uses numpy 1.26.4 with [all], fine with numpy 2+
+    "imageio[ffmpeg]",  # For recording videos with RLViser
+    "rlgym[rl-rlviser]",  # Uses numpy 1.26.4 with [all], fine with numpy 2+, perhaps remove from install, as it is not meant to be a dependency
 ]
-# headless = [
-#     "pyvirtualdisplay",  # For headless rendering in rlgym
-# ]
+headless = [
+    "mss",  # For taking screenshots
+    "psutil",  # For detecting RLViser process
+    "pyautogui",  # For exiting out of the RLViser options menu
+    "pyvirtualdisplay",  # For headless rendering in rlgym
+]
 extras = [
     "imageio",  # For saving evaluation videos as gifs
     # "moviepy==1.0.3",  # For recording videos in evaluation

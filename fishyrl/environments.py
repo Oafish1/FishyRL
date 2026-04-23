@@ -1,21 +1,26 @@
 """Environment definitions for FishyRL."""
 
 import enum
+import time
 import warnings
 from abc import abstractmethod
 from typing import Any
 
-import gymnasium as gym
 import numpy as np
 
 from . import utilities as frl_utilities
+
+# Try importing Gymnasium
+try:
+    import gymnasium as gym
+except ImportError:
+    pass
 
 # Try importing RLGym
 # TODO: Maybe move import inside VectorizedRLGymEnvironment
 try:
     import rlgym.api as rlapi
     import rlgym.rocket_league.action_parsers as rlact
-    import rlgym.rocket_league.api as rlrlapi
     import rlgym.rocket_league.common_values as rlcommon
     import rlgym.rocket_league.done_conditions as rldone
     import rlgym.rocket_league.obs_builders as rlobs
@@ -234,96 +239,6 @@ class VectorizedGymEnvironment(VectorizedEnvironment):
         return VectorizedGymEnvironment(**new_kwargs)
 
 
-class CloseReward(rlapi.RewardFunction):  # TODO: Move to separate file for dependency reasons
-    """A reward function that rewards agents for being close to the ball in RLGym."""
-    def __init__(self, *args: list[Any], use_diff: bool = True, **kwargs: dict[str, Any]) -> None:
-        """Initialize the CloseReward.
-
-        :param args: Positional arguments for the base class.
-        :type args: Any
-        :param use_diff: Whether to use the difference in distance for reward calculation. If ``False``, the
-            reward is based on the absolute distance. (Default: ``False``)
-        :type use_diff: bool
-        :param kwargs: Keyword arguments for the base class.
-        :type kwargs: dict[str, Any]
-
-        """
-        super().__init__(*args, **kwargs)
-
-        # Parameters
-        self._use_diff = use_diff
-
-        # Get scaling factor based on max diagonal of field to scale rewards to a range of ~2
-        self._max_dist = np.linalg.norm([rlcommon.SIDE_WALL_X, rlcommon.BACK_NET_Y, rlcommon.CEILING_Z])
-
-
-    def _compute_dist(self, state: rlrlapi.GameState) -> dict[str, float]:
-        """Compute the distance from each agent to the ball.
-
-        :param state: The current game state.
-        :type state: rlgym.rocket_league.api.GameState
-        :return: A dictionary mapping each agent to their distance from the ball.
-        :rtype: dict[str, float]
-
-        """
-        # Get ball position
-        ball_pos = state.ball.position
-
-        # Compute distance for each agent
-        dist = {}
-        for agent in state.cars:
-            car_pos = state.cars[agent].physics.position
-            dist[agent] = np.linalg.norm(car_pos - ball_pos)
-
-        return dist
-
-    def reset(self, agents: list[str], initial_state: rlrlapi.GameState, shared_info: dict[str, Any]) -> None:
-        """Reset the reward function, currently does nothing.
-
-        :param agents: A list of agent identifiers.
-        :type agents: list[str]
-        :param initial_state: The initial game state.
-        :type initial_state: rlgym.rocket_league.api.GameState
-        :param shared_info: Shared info.
-        :type shared_info: dict[str, Any]
-
-        """
-        self._dist = self._compute_dist(initial_state)
-
-    def get_rewards(self, agents: list[str], state: rlrlapi.GameState, is_terminated: dict[str, bool], is_truncated: dict[str, bool], shared_info: dict[str, Any]) -> dict[str, float]:
-        """Compute the rewards for the given state based on closeness to the ball.
-
-        :param agents: A list of agent identifiers.
-        :type agents: list[str]
-        :param state: The current game state.
-        :type state: rlgym.rocket_league.api.GameState
-        :param is_terminated: A dictionary indicating if each agent's episode has terminated.
-        :type is_terminated: dict[str, bool]
-        :param is_truncated: A dictionary indicating if each agent's episode has been truncated.
-        :type is_truncated: dict[str, bool]
-        :param shared_info: Shared info.
-        :type shared_info: dict[str, Any]
-        :return: A dictionary mapping each agent to their computed reward.
-        :rtype: dict[str, float]
-
-        """
-        # Get new distances
-        new_dist = self._compute_dist(state)
-
-        # Compute reward for each agent based on distance to ball
-        rewards = {}
-        for agent in agents:
-            # Compute reward and record
-            reward = self._dist[agent] - new_dist[agent] if self._use_diff else - new_dist[agent]
-            reward = reward / self._max_dist  # Scale reward to a range of ~2
-            rewards[agent] = reward
-
-        # Update stored distances
-        self._dist = new_dist
-
-        return rewards
-
-
 class VectorizedRLGymEnvironment(VectorizedEnvironment):
     """A vectorized environment wrapper for RLGym environments."""
     def __init__(
@@ -343,7 +258,8 @@ class VectorizedRLGymEnvironment(VectorizedEnvironment):
         :type num_envs: int
         :param team_size: The size of both teams. (Default: ``2``)
         :type team_size: int
-        :param allow_rendering: Whether to allow rendering of the environment, currently unsupported. (Default: ``False``)
+        :param allow_rendering: Whether to allow rendering of the environment, frame grabbing is currently unsupported in favor
+            of live visualization. (Default: ``False``)
         :type allow_rendering: bool
         :param automatic_reset: Whether to automatically reset the environment after termination. (Default: ``True``)
         :type automatic_reset: bool
@@ -358,6 +274,9 @@ class VectorizedRLGymEnvironment(VectorizedEnvironment):
         self._allow_rendering = allow_rendering
         self._automatic_reset = automatic_reset
         self._init_kwargs = init_kwargs
+
+        # Import new rewards
+        from .rlgym.rewards import CloseReward
 
         # Initialize environments
         self._envs = []
@@ -410,6 +329,10 @@ class VectorizedRLGymEnvironment(VectorizedEnvironment):
 
         # Initialize tracking for automatic reset
         self._ended = np.zeros(1, dtype=bool)  # DEBUGGING TODO SOMEHOW SQUARE
+
+        # Initialize render tracking
+        self._render_time = time.perf_counter()
+        self._tick_duration = action_parser.repeats / 120.
 
     @property
     def num_envs(self) -> int:
@@ -591,9 +514,14 @@ class VectorizedRLGymEnvironment(VectorizedEnvironment):
 
         return obs, rewards, terminations, truncations, {}
 
-    def render(self) -> np.ndarray:
-        """Render the environments and return a frame, currently unsupported.
+    def render(self, delay: bool = True) -> np.ndarray:
+        """Render the environments and return a frame.
 
+        Live visualization is currently supported, but frame grabbing is not due no support with RLViser. This method will render the
+        first environment to the RLViser window, but will return an empty array.
+
+        :param delay: Whether to delay rendering to match the render FPS. (Default: ``True``)
+        :type delay: bool
         :return: An array of rendered frames, with shape (num_envs, height, width, channels).
         :rtype: np.ndarray
 
@@ -624,7 +552,18 @@ class VectorizedRLGymEnvironment(VectorizedEnvironment):
         # # Stack frames and return
         # return np.stack(frames, axis=0)
 
+        # Delay to match render FPS
+        if delay:
+            elapsed = time.perf_counter() - self._render_time
+            sleep_time = max(0, self._tick_duration - elapsed)
+            time.sleep(sleep_time)
+
+        # Render
         self._envs[0].render()  # We render just to update the RLViser window, but we can't capture frames from it, so we return an empty array
+
+        # Update render time
+        self._render_time = time.perf_counter()
+
         return np.array([])
 
     def copy(self, **kwargs: dict[str, Any]) -> 'VectorizedRLGymEnvironment':

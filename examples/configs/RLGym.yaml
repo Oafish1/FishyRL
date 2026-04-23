@@ -15,7 +15,7 @@ env:
 
 # Evaluation configuration
 eval:
-  frequency: 0  # Rendering not configured yet
+  frequency: 0  # Rendering is only available externally
 
 # Ratio configuration
 replay:
