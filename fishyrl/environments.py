@@ -571,7 +571,7 @@ class VectorizedRLGymEnvironment(VectorizedEnvironment):
 
             # Warn if sleep time is below zero
             if warn and sleep_time <= 0:
-                warnings.warn(f'Rendering took {elapsed:.2f} seconds, which is longer than the target frame time of {render_target:.2f} seconds. '
+                warnings.warn(f'Rendering took {1000 * elapsed:.0f}ms, which is longer than the target frame time of {1000 * render_target:.0f}ms. '
                               f'Consider lowering the `speedup` parameter if this warning persists.')
 
         # Set rendering flag

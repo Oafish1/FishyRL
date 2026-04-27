@@ -1,12 +1,9 @@
 # MuJoCo Humanoid
 name: "RLGym"
 
-training:
-  pretrain_steps: 1024
-
 # Environment configuration
 env:
-  num: 4
+  num: 1
   group: "RLGym"
   name: "Soccar"
   actions:
@@ -24,10 +21,21 @@ replay:
 # Model configuration
 model:
   embedding:
-    # All MLP
-    - type: "MLP"
+    # All MLP (RLGym_2026-04-26_07-06-10)
+    # - type: "MLP"
+    #   segments:
+    #   - range: [0, 132]  # All observations for 2v2
+
+    # All Attention
+    - type: "Attention"
       segments:
-      - range: [0, 132]  # All observations for 2v2
+        - range: [0, 9]  # Ball observations
+        # TODO: Add locations to 34 pads and split by segment of 4 (timer, x, y, z)
+        - range: [9, 42]  # 34 pads
+        - range: [42, 72]  # Self car state plus observations
+        - range: [72, null]  # Other car observations
+          segment_len: 20
+          max_segments: 5
 
     # Attention (ball + cars) + MLP (pads + car input)
     # - type: "Attention"

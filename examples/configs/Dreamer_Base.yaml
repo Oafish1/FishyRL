@@ -61,7 +61,8 @@ model:
     embedded: 256  # Units, in original, controls all encoder/decoder layers
     blocks: 4  # Depth, in original, depth of CNN encoder/decoder
     # TODO: Tune layers/heads for attention, MAYBE ADD SEPARATE CONFIG FOR ATTENTION LAYERS
-    layers: 3  # Layers, in original, number of layers for MLP/ATT enc/dec and actor/critic
+    layers: 3  # Layers, in original, number of layers for MLP
+    att_layers: 1  # Novel addition, number of layers for attention encoder/decoder
     heads: 8  # Novel addition, number of attention heads for enc/dec
     dense: 256  # Hidden, in original
 

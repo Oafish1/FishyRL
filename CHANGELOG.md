@@ -1,3 +1,10 @@
+# 0.21.1
+- Add configurable `att_layers` parameter to config
+- Change units for `VectorizedRLGymEnvironment.render` warning from seconds to milliseconds
+- Close virtual desktop in `RLGym_Preview`
+- More attention testing for `RLGym`
+- New `models.AttentionEncoder` and `models.AttentionDecoder` architectures
+
 # 0.21.0
 - Add adjustable global layers, heads, and recurrent GRU blocks to configuration and arguments
 - Add adjustable team sizes per environment to `VectorizedRLGymEnvironment`

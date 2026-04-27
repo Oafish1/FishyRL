@@ -100,6 +100,7 @@ def construct_models(
     model_global_embedded: int = 1024,
     model_global_blocks: int = 5,
     model_global_layers: int = 3,
+    model_global_att_layers: int = 2,
     model_global_heads: int = 8,
     model_global_dense: int = 1024,
     # Model binning parameters
@@ -148,6 +149,8 @@ def construct_models(
     :type model_global_blocks: int
     :param model_global_layers: The number of layers in the MLP models. (Default: ``3``)
     :type model_global_layers: int
+    :param model_global_att_layers: The number of layers in the attention encoder and decoder models. (Default: ``2``)
+    :type model_global_att_layers: int
     :param model_global_heads: The number of heads in the attention decoder blocks. (Default: ``8``)
     :type model_global_heads: int
     :param model_global_dense: The dimension of the dense layers in the MLP models. (Default: ``1024``)
@@ -199,8 +202,22 @@ def construct_models(
     # NOTE: This uses `model_global_embedded` for all encoder and decoder dims, as in the original implementation
     # encoder_model = frl_models.MLPEncoder(env_obs_dim, model_global_embedded, num_blocks=model_global_blocks, hidden_dim=model_global_embedded).to(device)
     # decoder_model = frl_models.MLPDecoder(model_global_stochastic_dim * model_global_categorical_bins + model_global_deterministic_dim, env_obs_dim, num_blocks=model_global_blocks, hidden_dim=model_global_embedded).to(device)
-    encoder_model = frl_models.CompoundEncoder(*model_embedding, output_dim=model_global_embedded, num_blocks=model_global_blocks, num_layers=model_global_layers, num_heads=model_global_heads, hidden_dim=model_global_embedded).to(device)
-    decoder_model = frl_models.CompoundDecoder(*model_embedding, input_dim=model_global_stochastic_dim * model_global_categorical_bins + model_global_deterministic_dim, num_blocks=model_global_blocks, num_layers=model_global_layers, num_heads=model_global_heads, hidden_dim=model_global_embedded).to(device)
+    encoder_model = frl_models.CompoundEncoder(
+        *model_embedding,
+        output_dim=model_global_embedded,
+        num_blocks=model_global_blocks,
+        num_layers=model_global_layers,
+        num_att_layers=model_global_att_layers,
+        num_heads=model_global_heads,
+        hidden_dim=model_global_embedded).to(device)
+    decoder_model = frl_models.CompoundDecoder(
+        *model_embedding,
+        input_dim=model_global_stochastic_dim * model_global_categorical_bins + model_global_deterministic_dim,
+        num_blocks=model_global_blocks,
+        num_layers=model_global_layers,
+        num_att_layers=model_global_att_layers,
+        num_heads=model_global_heads,
+        hidden_dim=model_global_embedded).to(device)
 
     # RSSM models
     recurrent_model = frl_models.BlockRecurrentModel(model_global_stochastic_dim * model_global_categorical_bins, action_dim, model_global_dense, model_global_deterministic_dim, num_blocks=model_rssm_recurrent_blocks).to(device)  # 4/25/26Changed hidden from model_global_deterministic_dim to model_global_dense

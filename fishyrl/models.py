@@ -307,14 +307,14 @@ class CNNDecoder(nn.Module):
 
 class AttentionEncoder(nn.Module):
     """Attention encoder for processing sequential observations with attention mechanisms."""
-    def __init__(self, input_dims: list[int], hidden_dim: int = 512, num_layers: int = 3, num_heads: int = 8, num_queries: int = 1) -> None:
+    def __init__(self, input_dims: list[int], hidden_dim: int = 512, num_layers: int = 2, num_heads: int = 8, num_queries: int = 1) -> None:
         """Initialize the attention encoder.
 
         :param input_dims: A list of input dimensions for each sequential observation to be processed with attention.
         :type input_dims: list[int]
         :param hidden_dim: The dimension of the hidden layers and output per query. (Default: ``512``)
         :type hidden_dim: int
-        :param num_layers: The number of layers in the attention encoder. (Default: ``3``)
+        :param num_layers: The number of layers in the attention encoder. (Default: ``2``)
         :type num_layers: int
         :param num_heads: The number of attention heads to use. If None, defaults to the number of layers. (Default: ``None``)
         :type num_heads: int | None
@@ -327,18 +327,35 @@ class AttentionEncoder(nn.Module):
         # Parameters
         self._hidden_dim = hidden_dim
 
+        # Activation
+        self._activation = nn.SiLU()
+
         # Initialize input heads
         self._input_heads = nn.ModuleList([nn.Linear(input_dim, hidden_dim) for input_dim in input_dims])
 
         # Initialize self attention blocks
-        self.self_attention = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(
-                hidden_dim,
-                num_heads,
-                dim_feedforward=hidden_dim,
-                activation='gelu',
-                batch_first=True),  # NOTE: We normally use SiLU everywhere else
-            num_layers=num_layers)
+        self._self_attention = nn.ModuleList([
+            nn.MultiheadAttention(hidden_dim, num_heads, batch_first=True)
+            for _ in range(num_layers)])
+        self._self_attention_norm = nn.ModuleList([
+            nn.LayerNorm(hidden_dim, eps=1e-3)
+            for _ in range(num_layers)])
+        self._self_attention_fcl = nn.ModuleList([
+            nn.Linear(hidden_dim, hidden_dim)
+            for _ in range(num_layers)])
+
+        # Transformer
+        # self._self_attention = nn.TransformerEncoder(
+        #     nn.TransformerEncoderLayer(
+        #         hidden_dim,
+        #         num_heads,
+        #         dim_feedforward=hidden_dim,
+        #         activation='gelu',
+        #         batch_first=True),  # NOTE: We normally use SiLU everywhere else
+        #     num_layers=num_layers)
+        # TODO: Use encoder src_key_mask and reshape to (batch, padded_cars, feats)
+
+
 
         # Initialize cross attention layer
         self._queries = nn.Parameter(torch.randn(num_queries, hidden_dim))
@@ -369,9 +386,22 @@ class AttentionEncoder(nn.Module):
         # Process each input through its head
         x = [input_head(xi) for input_head, xi in zip(self._input_heads, x)]
 
-        # Concatenate inputs along sequence dimension and apply self attention
+        # Concatenate inputs along sequence dimension
         x = torch.cat(x, dim=-2)
-        x = self.self_attention(x)
+        # x = self._self_attention(x)
+
+        # Apply self attention layers with pre-normalization and residual connections
+        for self_attn, norm, fcl in zip(self._self_attention, self._self_attention_norm, self._self_attention_fcl):
+            # Apply self attention on normalized input
+            x_norm = norm(x)
+            x_attn, _ = self_attn(x_norm, x_norm, x_norm, need_weights=False)
+            x_attn = self._activation(x_attn)
+            x = x + x_attn
+
+            # Apply fcl with residual
+            x_fcl = fcl(norm(x))
+            x_fcl = self._activation(x_fcl)
+            x = x + x_fcl
 
         # Apply cross attention with learned queries
         queries = self._queries.view(1, *self._queries.shape).expand(*x.shape[:-2], -1, -1)
@@ -382,7 +412,7 @@ class AttentionEncoder(nn.Module):
 
 class AttentionDecoder(nn.Module):
     """Attention decoder for reconstructing sequential observations from latent representations."""
-    def __init__(self, input_dim: int, output_dims: list[int], num_queries: list[int] | int = 1, hidden_dim: int = 512, num_layers: int = 3, num_heads: int = 8) -> None:
+    def __init__(self, input_dim: int, output_dims: list[int], num_queries: list[int] | int = 1, hidden_dim: int = 512, num_layers: int = 2, num_heads: int = 8) -> None:
         """Initialize the attention decoder.
 
         :param input_dim: The dimension of the input latent representation.
@@ -395,7 +425,7 @@ class AttentionDecoder(nn.Module):
         :type num_queries: list[int] | int
         :param hidden_dim: The dimension of the hidden layers and output per query. (Default: ``512``)
         :type hidden_dim: int
-        :param num_layers: The number of layers in the attention decoder. (Default: ``3``)
+        :param num_layers: The number of layers in the attention decoder. (Default: ``2``)
         :type num_layers: int
         :param num_heads: The number of attention heads to use. If None, defaults to the number of layers. (Default: ``None``)
         :type num_heads: int | None
@@ -411,6 +441,9 @@ class AttentionDecoder(nn.Module):
             num_queries = [num_queries] * len(output_dims)
         self._num_queries = num_queries
 
+        # Activation
+        self._activation = nn.SiLU()
+
         # Initialize input head
         self._input_head = nn.Linear(input_dim, hidden_dim)
 
@@ -419,14 +452,25 @@ class AttentionDecoder(nn.Module):
         self._cross_attention = nn.MultiheadAttention(hidden_dim, num_heads, batch_first=True)
 
         # Initialize self attention blocks
-        self._self_attention = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(
-                hidden_dim,
-                num_heads,
-                dim_feedforward=hidden_dim,
-                activation='gelu',
-                batch_first=True),
-            num_layers=num_layers)
+        self._self_attention = nn.ModuleList([
+            nn.MultiheadAttention(hidden_dim, num_heads, batch_first=True)
+            for _ in range(num_layers)])
+        self._self_attention_norm = nn.ModuleList([
+            nn.LayerNorm(hidden_dim, eps=1e-3)
+            for _ in range(num_layers)])
+        self._self_attention_fcl = nn.ModuleList([
+            nn.Linear(hidden_dim, hidden_dim)
+            for _ in range(num_layers)])
+
+        # Initialize self attention blocks
+        # self._self_attention = nn.TransformerEncoder(
+        #     nn.TransformerEncoderLayer(
+        #         hidden_dim,
+        #         num_heads,
+        #         dim_feedforward=hidden_dim,
+        #         activation='gelu',
+        #         batch_first=True),
+        #     num_layers=num_layers)
 
         # Initialize output heads and existence predictors
         self._output_heads = nn.ModuleList([nn.Linear(hidden_dim, output_dim) for output_dim in output_dims])
@@ -454,7 +498,18 @@ class AttentionDecoder(nn.Module):
         x, _ = self._cross_attention(queries, x, x, need_weights=False)
 
         # Apply self attention
-        x = self._self_attention(x)
+        # x = self._self_attention(x)
+        for self_attn, norm, fcl in zip(self._self_attention, self._self_attention_norm, self._self_attention_fcl):
+            # Apply self attention on normalized input
+            x_norm = norm(x)
+            x_attn, _ = self_attn(x_norm, x_norm, x_norm, need_weights=False)
+            x_attn = self._activation(x_attn)
+            x = x + x_attn
+
+            # Apply fcl with residual
+            x_fcl = fcl(norm(x))
+            x_fcl = self._activation(x_fcl)
+            x = x + x_fcl
 
         # Unflatten batch dimensions
         x = x.view(*batch_dims, *x.shape[-2:])
@@ -536,6 +591,7 @@ class CompoundEncoder(nn.Module):
         output_dim: int = 512,  # Output dimension of each encoder
         num_blocks: int = 4,
         num_layers: int = 3,
+        num_att_layers: int = 2,
         num_heads: int = 8,
         hidden_dim: int = 512,
     ) -> None:
@@ -555,8 +611,10 @@ class CompoundEncoder(nn.Module):
         :type output_dim: int
         :param num_blocks: The number of blocks in each CNN encoder. (Default: ``4``)
         :type num_blocks: int
-        :param num_layers: The number of layers in each block of the MLP and attention encoders. (Default: ``3``)
+        :param num_layers: The number of layers in each block of the MLP encoders. (Default: ``3``)
         :type num_layers: int
+        :param num_att_layers: The number of layers in the attention encoders. (Default: ``2``)
+        :type num_att_layers: int
         :param num_heads: The number of attention heads in each attention encoder. (Default: ``8``)
         :type num_heads: int
         :param hidden_dim: The hidden dimension of each encoder. (Default: ``512``)
@@ -633,7 +691,7 @@ class CompoundEncoder(nn.Module):
                     input_dims=input_dims,
                     # output_dim=output_dim,  # TODO: Maybe add a final linear transformation here
                     hidden_dim=hidden_dim,
-                    num_layers=num_layers,
+                    num_layers=num_att_layers,
                     num_heads=num_heads)
 
             # Otherwise, raise error
@@ -680,6 +738,7 @@ class CompoundDecoder(nn.Module):
         input_dim: int = 512,  # Input dimension of each decoder
         num_blocks: int = 4,
         num_layers: int = 3,
+        num_att_layers: int = 2,
         num_heads: int = 8,
         hidden_dim: int = 512,
     ) -> None:
@@ -699,8 +758,10 @@ class CompoundDecoder(nn.Module):
         :type input_dim: int
         :param num_blocks: The number of blocks in each CNN decoder. (Default: ``4``)
         :type num_blocks: int
-        :param num_layers: The number of layers in each block of the MLP and attention decoders. (Default: ``3``)
+        :param num_layers: The number of layers in each block of the MLP decoders. (Default: ``3``)
         :type num_layers: int
+        :param num_att_layers: The number of layers in the attention decoders. (Default: ``2``)
+        :type num_att_layers: int
         :param num_heads: The number of attention heads in each attention decoder. (Default: ``8``)
         :type num_heads: int
         :param hidden_dim: The hidden dimension of each decoder. (Default: ``512``)
@@ -775,7 +836,7 @@ class CompoundDecoder(nn.Module):
                     input_dim=input_dim,
                     output_dims=output_dims,
                     num_queries=num_queries,
-                    num_layers=num_layers,
+                    num_layers=num_att_layers,
                     num_heads=num_heads,
                     hidden_dim=hidden_dim)
 
