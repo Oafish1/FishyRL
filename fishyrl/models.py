@@ -305,6 +305,47 @@ class CNNDecoder(nn.Module):
         return self._model(x)
 
 
+class PositionalEncoding(nn.Module):
+    """Module for adding positional encoding to input tensors.
+
+    From https://pytorch-tutorials-preview.netlify.app/beginner/transformer_tutorial.html.
+
+    """
+    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000) -> None:
+        """Initialize the positional encoding.
+
+        :param d_model: The dimension of the model and positional encoding.
+        :type d_model: int
+        :param dropout: The dropout rate. (Default: ``0.1``)
+        :type dropout: float
+        :param max_len: The maximum length of the input sequences. (Default: ``5000``)
+        :type max_len: int
+
+        """
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0).transpose(0, 1)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Add positional encoding to the input tensor.
+
+        :param x: The input tensor
+        :type x: torch.Tensor
+        :return: The output tensor with positional encoding added.
+        :rtype: torch.Tensor
+
+        """
+        x = x + self.pe[:x.size(0), :]
+        return self.dropout(x)
+
+
 class AttentionEncoder(nn.Module):
     """Attention encoder for processing sequential observations with attention mechanisms."""
     def __init__(self, input_dims: list[int], hidden_dim: int = 512, num_layers: int = 2, num_heads: int = 8, num_queries: int = 1) -> None:
@@ -333,6 +374,9 @@ class AttentionEncoder(nn.Module):
         # Initialize input heads
         self._input_heads = nn.ModuleList([nn.Linear(input_dim, hidden_dim) for input_dim in input_dims])
 
+        # Positional encoding
+        self._positional_encoding = PositionalEncoding(hidden_dim)  # TODO: Include max_len parameter
+
         # Initialize self attention blocks
         self._self_attention = nn.ModuleList([
             nn.MultiheadAttention(hidden_dim, num_heads, batch_first=True)
@@ -354,8 +398,6 @@ class AttentionEncoder(nn.Module):
         #         batch_first=True),  # NOTE: We normally use SiLU everywhere else
         #     num_layers=num_layers)
         # TODO: Use encoder src_key_mask and reshape to (batch, padded_cars, feats)
-
-
 
         # Initialize cross attention layer
         self._queries = nn.Parameter(torch.randn(num_queries, hidden_dim))
@@ -385,6 +427,9 @@ class AttentionEncoder(nn.Module):
 
         # Process each input through its head
         x = [input_head(xi) for input_head, xi in zip(self._input_heads, x)]
+
+        # Apply positional encoding to each head individually
+        x = [self._positional_encoding(xi) for xi in x]
 
         # Concatenate inputs along sequence dimension
         x = torch.cat(x, dim=-2)

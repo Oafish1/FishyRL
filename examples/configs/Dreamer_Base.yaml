@@ -5,6 +5,11 @@ name: "Dreamer_Small"
 checkpoint:
   frequency: 10000
 
+# Logging configuration
+log:
+  individual_envs: true  # Log individual environment rewards, ignores frequency
+  frequency: 1
+
 # Evaluation configuration
 eval:
   frequency: 5000

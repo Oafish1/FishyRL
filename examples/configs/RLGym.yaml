@@ -20,6 +20,7 @@ replay:
 
 # Model configuration
 model:
+
   embedding:
     # All MLP (RLGym_2026-04-26_07-06-10)
     # - type: "MLP"

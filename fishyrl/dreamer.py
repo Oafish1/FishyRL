@@ -800,6 +800,9 @@ def train_loop(
     # Checkpointing parameters
     checkpoint_dir: str = None,
     checkpoint_frequency: int = 5_000,
+    # Logging parameters
+    log_frequency: int = 1,
+    log_individual_envs: bool = True,
     # Evaluation parameters
     eval_frequency: int = 10**3,
     # Training parameters
@@ -834,8 +837,10 @@ def train_loop(
     :type checkpoint_dir: str
     :param checkpoint_frequency: The frequency (in environment steps) for saving checkpoints. (Default: ``5_000``)
     :type checkpoint_frequency: int
-    :param env_name: The name of the environment for evaluation purposes. (Default: ``None``)
-    :type env_name: str
+    :param log_frequency: The frequency (in environment steps) for logging training metrics to TensorBoard. (Default: ``1``)
+    :type log_frequency: int
+    :param log_individual_envs: Whether to log rewards for individual environments separately in TensorBoard. (Default: ``True``)
+    :type log_individual_envs: bool
     :param eval_frequency: The frequency (in environment steps) for performing evaluations. (Default: ``10**3``)
     :type eval_frequency: int
     :param training_steps: The total number of environment steps to train for. (Default: ``10**6``)
@@ -913,14 +918,19 @@ def train_loop(
         obs, rewards, terminations, truncations, infos = envs.step(env_actions)
         initializations = torch.tensor(terminations | truncations, dtype=torch.bool, device=device)
 
+        # Check if this is a logging step
+        log_this_step = environment_step % log_frequency < envs.num_envs
+
         # Iterate and record rewards if done, and also track cumulative rewards by environment
+        # TODO: Could vectorize this
         cumulative_rewards += rewards
         for i in range(envs.num_envs):
             # Track per-environment cumulative rewards
             # NOTE: The tracked step is multiplied by the number of environments, but we keep it that way for easier comparison with total environment steps
-            if tensorboard_writer is not None:
+            if log_individual_envs and log_this_step and tensorboard_writer is not None:
                 tensorboard_writer.add_scalar(f'Reward/Environment_{i}', cumulative_rewards[i], environment_step)
 
+            # Log episode rewards, ignoring log frequency
             if terminations[i] or truncations[i]:
                 # TODO: Maybe differentiate between terminations and truncations in logging
                 if tensorboard_writer is not None:
@@ -949,7 +959,7 @@ def train_loop(
                     world_model=world_model,
                     actor_critic_model=actor_critic_model,
                     utility_modules=utility_modules,
-                    tensorboard_writer=tensorboard_writer,
+                    tensorboard_writer=tensorboard_writer if log_this_step else None,
                     environment_step=environment_step,
                     **kwargs)
 

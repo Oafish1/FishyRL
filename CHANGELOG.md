@@ -1,3 +1,10 @@
+# 0.22.0
+- Add config options `log_frequency` and `log_individual_envs`
+- Add positional encoding (`models.PositionalEncoding`) to `models.AttentionEncoder` and implement vectorized positional attention loss, speeding up computation 10x for attention models
+- Add `losses.attention_reconstruction_loss` parameter, `reconstruction_loss_type` with `positional` and `hungarian` loss types
+- Fix compatibility with zero-filled entities in `losses.attention_reconstruction_loss`
+- Training for `RLGym` using 12m preset
+
 # 0.21.1
 - Add configurable `att_layers` parameter to config
 - Change units for `VectorizedRLGymEnvironment.render` warning from seconds to milliseconds
